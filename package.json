@@ -3,19 +3,78 @@
     "displayName": "Qtide",
     "description": "qtcreate的业务代码辅助编写插件",
     "version": "0.0.1",
+    "icon": "res/icon/qtide.svg",
     "engines": {
         "vscode": "^1.96.4"
     },
     "categories": [
         "Other"
     ],
-    "activationEvents": [],
+    "activationEvents": [
+        "onStartupFinished"
+    ],
     "main": "./out/extension.js",
     "contributes": {
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "qtide_view",
+                    "title": "Qtide",
+                    "icon": "./res/icon/qtide.svg"
+                }
+            ]
+        },
+        "views": {
+            "qtide_view": [
+                {
+                    "id": "qtide.view.project",
+                    "name": "Project"
+                },
+                {
+                    "id": "qtide.view.operations",
+                    "name": "Operations"
+                }
+            ]
+        },
         "commands": [
             {
-                "command": "qtide.helloWorld",
-                "title": "Hello World"
+                "command": "qtide.openProject",
+                "title": "Open Project",
+                "category": "Qtide"
+            },
+            {
+                "command": "qtide.newProject",
+                "title": "New Project",
+                "category": "Qtide"
+            },
+            {
+                "command": "qtide.importProject",
+                "title": "Import Project",
+                "category": "Qtide"
+            },
+            {
+                "command": "qtide.refreshProject",
+                "title": "Refresh Project",
+                "category": "Qtide",
+                "icon": {
+                    "dark": "$(refresh)",
+                    "light": "$(refresh)"
+                }
+            }
+        ],
+        "menus": {
+            "view/title": [
+                {
+                    "command": "qtide.refreshProject",
+                    "when": "view == qtide.view.project",
+                    "group": "navigation"
+                }
+            ]
+        },
+        "viewsWelcome": [
+            {
+                "view": "qtide.view.project",
+                "contents": "No Qt project opened. Use Import Project to open a .pro file."
             }
         ]
     },
