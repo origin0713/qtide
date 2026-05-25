@@ -1,5 +1,6 @@
 {
     "compilerOptions": {
+        "moduleResolution": "node16",
         "typeRoots": [
             "./node_modules/@types"
         ],
