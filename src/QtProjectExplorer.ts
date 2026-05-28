@@ -3,11 +3,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { ProFileParser } from './ProFileParser';
 import { QtProjectData, QtTreeItem, TreeItemType } from './QtTypeDefine';
+import { QtideConfigManager } from './QtideConfig';
 
-/**
- * 操作视图的 TreeDataProvider
- * 显示三个操作按钮：Open Project / New Project / Import Project
- */
 class OperationDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
 
     private _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined>();
@@ -68,10 +65,6 @@ class OperationDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> 
     }
 }
 
-/**
- * 项目树视图的 TreeDataProvider
- * 支持多项目根节点
- */
 class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
 
     private _onDidChangeTreeData = new vscode.EventEmitter<QtTreeItem | undefined>();
@@ -151,7 +144,6 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
     private getProjectChildren(data: QtProjectData): QtTreeItem[] {
         const children: QtTreeItem[] = [];
 
-        // .pro 文件节点
         children.push(new QtTreeItem(
             path.basename(data.proFilePath),
             TreeItemType.PRO_FILE,
@@ -159,7 +151,6 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
             vscode.TreeItemCollapsibleState.None
         ));
 
-        // Headers 分组
         if (data.headers.length > 0) {
             const headersGroup = new QtTreeItem(
                 'Headers',
@@ -170,7 +161,6 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
             children.push(headersGroup);
         }
 
-        // Sources 分组
         if (data.sources.length > 0) {
             const sourcesGroup = new QtTreeItem(
                 'Sources',
@@ -181,7 +171,6 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
             children.push(sourcesGroup);
         }
 
-        // Forms 分组
         if (data.forms.length > 0) {
             const formsGroup = new QtTreeItem(
                 'Forms',
@@ -192,7 +181,6 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
             children.push(formsGroup);
         }
 
-        // Resources 分组
         if (data.resources.length > 0) {
             const resourcesGroup = new QtTreeItem(
                 'Resources',
@@ -221,9 +209,6 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
     }
 }
 
-/**
- * Qt 项目资源管理器
- */
 export class QtProjectExplorer {
 
     private operationProvider: OperationDataProvider;
@@ -236,6 +221,8 @@ export class QtProjectExplorer {
     private refreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     private settingsPanel: vscode.WebviewPanel | undefined;
+
+    private workspaceRoot: string | undefined;
 
     constructor(context: vscode.ExtensionContext) {
         this.operationProvider = new OperationDataProvider();
@@ -272,25 +259,132 @@ export class QtProjectExplorer {
             })
         );
 
+        this.workspaceRoot = this.resolveWorkspaceRoot();
         void this.scanWorkspace();
     }
 
-    /**
-     * 扫描工作区中的 .pro 文件并加载
-     */
+    private resolveWorkspaceRoot(): string | undefined {
+        if (vscode.workspace.workspaceFile) {
+            return path.dirname(vscode.workspace.workspaceFile.fsPath);
+        }
+        if (vscode.workspace.workspaceFolders?.length) {
+            return vscode.workspace.workspaceFolders[0].uri.fsPath;
+        }
+        return undefined;
+    }
+
     async scanWorkspace(): Promise<void> {
-        if (!vscode.workspace.workspaceFolders?.length) {
+        this.workspaceRoot = this.resolveWorkspaceRoot();
+        if (!this.workspaceRoot || !vscode.workspace.workspaceFolders?.length) {
             return;
         }
 
-        const proFiles = await vscode.workspace.findFiles(
+        const proUris = await vscode.workspace.findFiles(
             '**/*.pro',
             '{**/node_modules/**,**/.git/**,**/build/**,**/out/**}'
         );
 
-        for (const uri of proFiles) {
+        if (proUris.length === 0) {
+            return;
+        }
+
+        const tracked: vscode.Uri[] = [];
+        const untracked: vscode.Uri[] = [];
+
+        for (const uri of proUris) {
+            if (QtideConfigManager.isTracked(uri.fsPath)) {
+                tracked.push(uri);
+            } else {
+                untracked.push(uri);
+            }
+        }
+
+        for (const uri of tracked) {
             await this.loadProject(uri.fsPath, { silent: true });
         }
+
+        if (untracked.length === 0) {
+            return;
+        }
+
+        if (untracked.length === 1) {
+            const name = path.basename(untracked[0].fsPath, '.pro');
+            await this.loadProject(untracked[0].fsPath, { silent: true });
+            QtideConfigManager.save(untracked[0].fsPath, name);
+            vscode.window.showInformationMessage(`Loaded Qt project: ${name}`);
+            return;
+        }
+
+        await this.promptProjectSelection(untracked);
+    }
+
+    private async promptProjectSelection(proUris: vscode.Uri[]): Promise<void> {
+        const allItem: vscode.QuickPickItem & { isAll?: boolean; uri?: vscode.Uri } = {
+            label: 'All Projects',
+            description: `Load all ${proUris.length} projects`,
+            isAll: true,
+        };
+
+        const projItems: (vscode.QuickPickItem & { isAll?: boolean; uri?: vscode.Uri })[] = proUris.map(uri => {
+            const name = path.basename(uri.fsPath, '.pro');
+            const dir = path.relative(this.workspaceRoot!, path.dirname(uri.fsPath));
+            return {
+                label: name,
+                description: dir,
+                detail: uri.fsPath,
+                uri,
+            };
+        });
+
+        const items = [...projItems, allItem];
+
+        const selected = await vscode.window.showQuickPick(items, {
+            placeHolder: 'Select a project to load (Enter to confirm, ESC to cancel)',
+            title: 'Qtide - Select Projects',
+        });
+
+        if (!selected) {
+            vscode.window.showInformationMessage('No projects loaded.');
+            return;
+        }
+
+        if (selected.isAll) {
+            for (const uri of proUris) {
+                await this.loadProject(uri.fsPath, { silent: true });
+                QtideConfigManager.save(uri.fsPath, path.basename(uri.fsPath, '.pro'));
+            }
+            return;
+        }
+
+        await this.loadProject(selected.uri!.fsPath);
+        QtideConfigManager.save(selected.uri!.fsPath, selected.label);
+    }
+
+    async removeProject(item?: QtTreeItem): Promise<void> {
+        if (!item || item.type !== TreeItemType.PROJECT) {
+            return;
+        }
+
+        const proFilePath = item.projectData.proFilePath;
+        const projName = item.projectData.name;
+
+        const confirm = await vscode.window.showWarningMessage(
+            `Remove project "${projName}" from Qtide?`,
+            { modal: true },
+            'Remove'
+        );
+
+        if (confirm !== 'Remove') {
+            return;
+        }
+
+        this.projectProvider.removeProject(proFilePath);
+        this.clearRefreshTimer(proFilePath);
+        this.setupWatchers();
+
+        QtideConfigManager.remove(proFilePath);
+
+        vscode.window.showInformationMessage(`Project "${projName}" removed.`);
     }
 
     async importProject(): Promise<void> {
@@ -309,6 +403,7 @@ export class QtProjectExplorer {
         }
 
         await this.loadProject(uris[0].fsPath);
+        QtideConfigManager.save(uris[0].fsPath, path.basename(uris[0].fsPath, '.pro'));
     }
 
     async openProject(): Promise<void> {
@@ -326,9 +421,17 @@ export class QtProjectExplorer {
             return;
         }
 
+        const targetPath = uris[0].fsPath;
+
+        if (vscode.workspace.workspaceFile &&
+            vscode.workspace.workspaceFile.fsPath === targetPath) {
+            vscode.window.showInformationMessage('This workspace is already open.');
+            return;
+        }
+
         await vscode.commands.executeCommand(
             'vscode.openFolder',
-            vscode.Uri.file(uris[0].fsPath)
+            vscode.Uri.file(targetPath)
         );
     }
 
@@ -440,7 +543,7 @@ export class QtProjectExplorer {
 
     private async promptSaveWorkspace(data: QtProjectData): Promise<void> {
         const selection = await vscode.window.showInformationMessage(
-            `Project "${data.name}" imported. Save a workspace file and open project?`,
+            `Project "${data.name}" imported. Continue to auto-save workspace, Cancel to choose custom path.`,
             'Continue', 'Cancel'
         );
 
@@ -469,9 +572,17 @@ export class QtProjectExplorer {
             };
             try {
                 fs.writeFileSync(targetPath, JSON.stringify(workspaceContent, null, 4));
-                vscode.window.showInformationMessage(
-                    `Workspace file saved: ${path.basename(targetPath)}`
+
+                const openSelection = await vscode.window.showInformationMessage(
+                    `Workspace file saved: ${path.basename(targetPath)}. Open it in VS Code?`,
+                    'Yes', 'Later'
                 );
+                if (openSelection === 'Yes') {
+                    await vscode.commands.executeCommand(
+                        'vscode.openFolder',
+                        vscode.Uri.file(targetPath)
+                    );
+                }
             } catch (error) {
                 vscode.window.showErrorMessage(
                     `Failed to save workspace file: ${error}`
@@ -565,6 +676,7 @@ export class QtProjectExplorer {
         this.projectProvider.removeProject(proFilePath);
         this.clearRefreshTimer(proFilePath);
         this.setupWatchers();
+        QtideConfigManager.remove(proFilePath);
         vscode.window.showWarningMessage(`Removed project: ${path.basename(proFilePath)}`);
     }
 
@@ -615,3 +727,11 @@ export class QtProjectExplorer {
         this.projectView.dispose();
     }
 }
+
+
+
+
+
+
+
+

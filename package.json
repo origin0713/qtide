@@ -1,145 +1,160 @@
 {
-    "name": "qtide",
-    "displayName": "Qtide",
-    "description": "qtcreate的业务代码辅助编写插件",
-    "version": "0.0.1",
-    "icon": "res/icon/qtide.svg",
-    "engines": {
-        "vscode": "^1.96.4"
+  "name": "qtide",
+  "displayName": "Qt IDE",
+  "description": "qtcreate的业务代码辅助编写插件",
+  "version": "0.0.2",
+  "publisher": "origin0713",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/origin0713/qtide"
+  },
+  "icon": "res/icon/qtide.png",
+  "engines": {
+    "vscode": "^1.116.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "qtide_view",
+          "title": "Qtide",
+          "icon": "./res/icon/qtide.svg"
+        }
+      ]
     },
-    "categories": [
-        "Other"
+    "views": {
+      "qtide_view": [
+        {
+          "id": "qtide.view.project",
+          "name": "QTIDE PROJECT"
+        },
+        {
+          "id": "qtide.view.operations",
+          "name": "Operations",
+          "visibility": "collapsed"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "qtide.openProject",
+        "title": "Open Project",
+        "category": "Qtide"
+      },
+      {
+        "command": "qtide.newProject",
+        "title": "New Project",
+        "category": "Qtide"
+      },
+      {
+        "command": "qtide.importProject",
+        "title": "Import Project",
+        "category": "Qtide"
+      },
+      {
+        "command": "qtide.refreshProject",
+        "title": "Refresh Project",
+        "category": "Qtide",
+        "icon": {
+          "dark": "$(refresh)",
+          "light": "$(refresh)"
+        }
+      },
+      {
+        "command": "qtide.openTreeFile",
+        "title": "Open File",
+        "category": "Qtide"
+      },
+      {
+        "command": "qtide.revealInExplorer",
+        "title": "Reveal in File Explorer",
+        "category": "Qtide"
+      },
+      {
+        "command": "qtide.copyPath",
+        "title": "Copy Path",
+        "category": "Qtide"
+      },
+      {
+        "command": "qtide.openSettings",
+        "title": "Open Qtide Settings",
+        "category": "Qtide"
+      },
+      {
+        "title": "Remove Project",
+        "category": "Qtide",
+        "command": "qtide.removeProject"
+      }
     ],
-    "activationEvents": [
-        "onStartupFinished"
-    ],
-    "main": "./out/extension.js",
-    "contributes": {
-        "viewsContainers": {
-            "activitybar": [
-                {
-                    "id": "qtide_view",
-                    "title": "Qtide",
-                    "icon": "./res/icon/qtide.svg"
-                }
-            ]
+    "menus": {
+      "view/title": [
+        {
+          "command": "qtide.refreshProject",
+          "when": "view == qtide.view.project",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "qtide.openTreeFile",
+          "when": "view == qtide.view.project && viewItem == qtFile",
+          "group": "navigation@1"
         },
-        "views": {
-            "qtide_view": [
-                {
-                    "id": "qtide.view.project",
-                    "name": "QTIDE PROJECT"
-                },
-                {
-                    "id": "qtide.view.operations",
-                    "name": "Operations",
-                    "visibility": "collapsed"
-                }
-            ]
+        {
+          "command": "qtide.revealInExplorer",
+          "when": "view == qtide.view.project && viewItem == qtFile",
+          "group": "navigation@2"
         },
-        "commands": [
-            {
-                "command": "qtide.openProject",
-                "title": "Open Project",
-                "category": "Qtide"
-            },
-            {
-                "command": "qtide.newProject",
-                "title": "New Project",
-                "category": "Qtide"
-            },
-            {
-                "command": "qtide.importProject",
-                "title": "Import Project",
-                "category": "Qtide"
-            },
-            {
-                "command": "qtide.refreshProject",
-                "title": "Refresh Project",
-                "category": "Qtide",
-                "icon": {
-                    "dark": "$(refresh)",
-                    "light": "$(refresh)"
-                }
-            },
-            {
-                "command": "qtide.openTreeFile",
-                "title": "Open File",
-                "category": "Qtide"
-            },
-            {
-                "command": "qtide.revealInExplorer",
-                "title": "Reveal in File Explorer",
-                "category": "Qtide"
-            },
-            {
-                "command": "qtide.copyPath",
-                "title": "Copy Path",
-                "category": "Qtide"
-            },
-            {
-                "command": "qtide.openSettings",
-                "title": "Open Qtide Settings",
-                "category": "Qtide"
-            }
-        ],
-        "menus": {
-            "view/title": [
-                {
-                    "command": "qtide.refreshProject",
-                    "when": "view == qtide.view.project",
-                    "group": "navigation"
-                }
-            ],
-            "view/item/context": [
-                {
-                    "command": "qtide.openTreeFile",
-                    "when": "view == qtide.view.project && viewItem == qtFile",
-                    "group": "navigation@1"
-                },
-                {
-                    "command": "qtide.revealInExplorer",
-                    "when": "view == qtide.view.project && viewItem == qtFile",
-                    "group": "navigation@2"
-                },
-                {
-                    "command": "qtide.copyPath",
-                    "when": "view == qtide.view.project && viewItem == qtFile",
-                    "group": "2_path@1"
-                },
-                {
-                    "command": "qtide.refreshProject",
-                    "when": "view == qtide.view.project && viewItem == project",
-                    "group": "navigation@1"
-                }
-            ]
+        {
+          "command": "qtide.copyPath",
+          "when": "view == qtide.view.project && viewItem == qtFile",
+          "group": "2_path@1"
         },
-        "viewsWelcome": [
-            {
-                "view": "qtide.view.project",
-                "contents": "%qtide.welcome%"
-            }
-        ]
+        {
+          "command": "qtide.refreshProject",
+          "when": "view == qtide.view.project && viewItem == project",
+          "group": "navigation@1"
+        },
+        {
+          "when": "view == qtide.view.project && viewItem == project",
+          "command": "qtide.removeProject",
+          "group": "2_remove@1"
+        }
+      ]
     },
-    "scripts": {
-        "vscode:prepublish": "pnpm run compile",
-        "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./",
-        "pretest": "pnpm run compile && pnpm run lint",
-        "lint": "eslint src",
-        "test": "vscode-test"
-    },
-    "devDependencies": {
-        "@types/vscode": "^1.116.0",
-        "@types/mocha": "^10.0.10",
-        "@types/node": "22.x",
-        "typescript-eslint": "^8.56.1",
-        "eslint": "^9.39.3",
-        "typescript": "^5.9.3",
-        "@vscode/test-cli": "^0.0.12",
-        "@vscode/test-electron": "^2.5.2"
-    },
-    "volta": {
-        "node": "18.20.8"
-    }
+    "viewsWelcome": [
+      {
+        "view": "qtide.view.project",
+        "contents": "%qtide.welcome%"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "pnpm run compile && pnpm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.116.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "typescript-eslint": "^8.56.1",
+    "eslint": "^9.39.3",
+    "typescript": "^5.9.3",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2"
+  },
+  "volta": {
+    "node": "24.15.0"
+  }
 }

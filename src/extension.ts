@@ -11,7 +11,6 @@ async function promptToOpenWorkspaceForPro(proFilePath: string): Promise<void> {
     const dir = path.dirname(proFilePath);
     const baseName = path.basename(proFilePath, '.pro');
 
-    // 首选与 .pro 同名的 .code-workspace
     const preferredWorkspace = path.join(dir, `${baseName}.code-workspace`);
 
     let workspacePath: string | undefined;
@@ -19,7 +18,6 @@ async function promptToOpenWorkspaceForPro(proFilePath: string): Promise<void> {
     if (fs.existsSync(preferredWorkspace)) {
         workspacePath = preferredWorkspace;
     } else {
-        // 否则查找当前目录下任意 .code-workspace
         try {
             const entries = fs.readdirSync(dir);
             const wsName = entries.find(name => name.toLowerCase().endsWith('.code-workspace'));
@@ -27,7 +25,6 @@ async function promptToOpenWorkspaceForPro(proFilePath: string): Promise<void> {
                 workspacePath = path.join(dir, wsName);
             }
         } catch {
-            // ignore fs errors and just return
         }
     }
 
@@ -35,7 +32,6 @@ async function promptToOpenWorkspaceForPro(proFilePath: string): Promise<void> {
         return;
     }
 
-    // 如果当前已经打开的是同一个 workspace，则不提示
     if (vscode.workspace.workspaceFile &&
         vscode.workspace.workspaceFile.fsPath === workspacePath) {
         return;
@@ -61,10 +57,8 @@ export function activate(context: vscode.ExtensionContext) {
 
     QtTreeItem.extensionUri = context.extensionUri;
 
-    // 创建项目资源管理器（操作视图 + 项目树视图）
     projectExplorer = new QtProjectExplorer(context);
 
-    // 注册命令
     context.subscriptions.push(
         vscode.commands.registerCommand('qtide.openProject', () => {
             projectExplorer.openProject();
@@ -96,6 +90,12 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(
+        vscode.commands.registerCommand('qtide.removeProject', (item?: QtTreeItem) => {
+            void projectExplorer.removeProject(item);
+        })
+    );
+
+    context.subscriptions.push(
         vscode.commands.registerCommand('qtide.openTreeFile', (item?: QtTreeItem) => {
             void projectExplorer.openTreeFile(item);
         })
@@ -119,7 +119,6 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // 当用户在编辑器中打开 .pro 文件时，检测并提示关联的 .code-workspace
     context.subscriptions.push(
         vscode.workspace.onDidOpenTextDocument(doc => {
             const filePath = doc.fileName;

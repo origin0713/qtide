@@ -62,20 +62,18 @@ export class ProFileParser {
         let currentLine = '';
 
         for (const rawLine of rawLines) {
-            // 去除注释：找到第一个不在引号内的 #
             let line = ProFileParser.stripComment(rawLine);
-
-            // 去除首尾空白
             const trimmed = line.trim();
 
-            // 空行跳过
             if (trimmed.length === 0) {
+                if (currentLine.trim().length > 0) {
+                    mergedLines.push(currentLine.trim());
+                    currentLine = '';
+                }
                 continue;
             }
 
-            // 检查是否以 \ 结尾（续行标记）
             if (trimmed.endsWith('\\')) {
-                // 去掉末尾的 \ 并拼接
                 currentLine += trimmed.slice(0, -1).trimEnd() + ' ';
             } else {
                 currentLine += trimmed;
@@ -84,7 +82,6 @@ export class ProFileParser {
             }
         }
 
-        // 处理最后一行（如果没有以 \ 结尾）
         if (currentLine.trim().length > 0) {
             mergedLines.push(currentLine.trim());
         }
@@ -147,3 +144,4 @@ export class ProFileParser {
         return vars;
     }
 }
+
