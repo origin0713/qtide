@@ -9,10 +9,9 @@
             "node",
             "mocha"
         ],
-        "baseUrl": ".",
         "paths": {
-            "@/*": [
-                "src/*"
+            "#/*": [
+                "./src/*"
             ]
         },
         "module": "Node16",

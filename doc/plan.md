@@ -47,14 +47,14 @@ qtide/
 2. 操作视图：三个按钮（Open Project / New Project / Import Project）
 3. Import Project：浏览本地 .pro 文件并解析
 4. 项目树显示：
-   ```
+  ```
    [project_name]
      |- [project_name].pro
      |- Headers/
      |- Sources/
      |- Forms/
      |- Resources/
-   ```
+  ```
 
 ### 阶段二：增强文件树功能
 
@@ -144,5 +144,6 @@ second
 ## 6. 参考项目
 
 - eide-master：`F:\Software\VsCode_Project\plugin_project\eide-master`（架构参考）
-- VS Code Extension API：https://code.visualstudio.com/api
-- qmake Variable Reference：https://doc.qt.io/qt-5/qmake-variable-reference.html
+- VS Code Extension API：[https://code.visualstudio.com/api](https://code.visualstudio.com/api)
+- qmake Variable Reference：[https://doc.qt.io/qt-5/qmake-variable-reference.html](https://doc.qt.io/qt-5/qmake-variable-reference.html)
+

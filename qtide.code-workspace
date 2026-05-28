@@ -1,0 +1,14 @@
+{
+    "folders": [
+        {
+            "path": "."
+        },
+        {
+            "path": "../eide-master"
+        }
+    ],
+    "settings": {
+        "typescript.tsc.autoDetect": "off",
+        "Codegeex.RepoIndex": true
+    }
+}

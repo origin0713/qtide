@@ -32,7 +32,8 @@
                 },
                 {
                     "id": "qtide.view.operations",
-                    "name": "Operations"
+                    "name": "Operations",
+                    "visibility": "collapsed"
                 }
             ]
         },
@@ -60,6 +61,21 @@
                     "dark": "$(refresh)",
                     "light": "$(refresh)"
                 }
+            },
+            {
+                "command": "qtide.openTreeFile",
+                "title": "Open File",
+                "category": "Qtide"
+            },
+            {
+                "command": "qtide.revealInExplorer",
+                "title": "Reveal in File Explorer",
+                "category": "Qtide"
+            },
+            {
+                "command": "qtide.copyPath",
+                "title": "Copy Path",
+                "category": "Qtide"
             }
         ],
         "menus": {
@@ -69,12 +85,34 @@
                     "when": "view == qtide.view.project",
                     "group": "navigation"
                 }
+            ],
+            "view/item/context": [
+                {
+                    "command": "qtide.openTreeFile",
+                    "when": "view == qtide.view.project && viewItem == qtFile",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "qtide.revealInExplorer",
+                    "when": "view == qtide.view.project && viewItem == qtFile",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "qtide.copyPath",
+                    "when": "view == qtide.view.project && viewItem == qtFile",
+                    "group": "2_path@1"
+                },
+                {
+                    "command": "qtide.refreshProject",
+                    "when": "view == qtide.view.project && viewItem == project",
+                    "group": "navigation@1"
+                }
             ]
         },
         "viewsWelcome": [
             {
                 "view": "qtide.view.project",
-                "contents": "No Qt project opened. Use Import Project to open a .pro file."
+                "contents": "No Qt project found. Open a workspace folder or use Import Project to load .pro file(s)."
             }
         ]
     },
