@@ -1,71 +1,83 @@
-# qtide README
+# Qtide
 
-This is the README for your extension "qtide". After writing up a brief description, we recommend including the following sections.
-
-## Features
-
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
-
-For example if there is an image subfolder under your extension project workspace:
-
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
-
-## Requirements
-
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
-
-## Extension Settings
-
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
-This extension contributes the following settings:
-
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
-
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+[中文](#chinese) | [English](#english)
 
 ---
 
-## Following extension guidelines
+<a id="chinese"></a>
 
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
+## 中文
 
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
+Qtide 是一个 VS Code 扩展，用于解析和浏览 Qt `.pro` 项目文件，提供类似 Qt Creator 的项目文件树视图。
 
-## Working with Markdown
+### 功能
 
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
+- **导入 .pro 项目** — 通过文件选择器导入 Qt `.pro` 文件，自动解析 TARGET、SOURCES、HEADERS、FORMS、RESOURCES
+- **项目文件树** — 在侧边栏以分组形式展示头文件、源文件、UI 表单和资源文件，支持展开/收起
+- **工作区文件提示** — 导入成功后询问是否保存 `.code-workspace` 文件，支持自定义保存路径
+- **打开工作区** — 通过 `.code-workspace` 文件切换 VS Code 工作区
+- **设置面板** — 提供分组式设置界面（General / Editor / Build），当前为功能预览
 
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
+### 使用
 
-## For more information
+1. 点击 Operations 视图中的 **Import Project**
+2. 选择一个 `.pro` 文件
+3. 项目文件树自动在下方显示
+4. 按提示保存工作区文件（可选）
 
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
+### 构建
 
-**Enjoy!**
+```bash
+# 编译扩展
+npm install
+npm run compile
+
+# 构建设置面板（需先安装 Node.js）
+cd webview/settings
+npm install
+npm run build
+```
+
+### 许可
+
+MIT
+
+---
+
+<a id="english"></a>
+
+## English
+
+Qtide is a VS Code extension that parses and browses Qt `.pro` project files, providing a Qt Creator-like project file tree view.
+
+### Features
+
+- **Import .pro project** — Import a Qt `.pro` file via file picker, automatically parse TARGET, SOURCES, HEADERS, FORMS, RESOURCES
+- **Project file tree** — Display headers, sources, UI forms and resources in grouped sidebar views with expand/collapse support
+- **Workspace prompt** — Ask whether to save a `.code-workspace` file after successful import, with custom save path support
+- **Open workspace** — Switch VS Code workspace via `.code-workspace` files
+- **Settings panel** — Grouped settings UI (General / Editor / Build), currently feature preview
+
+### Usage
+
+1. Click **Import Project** in the Operations view
+2. Select a `.pro` file
+3. The project file tree appears below
+4. Optionally save the workspace file when prompted
+
+### Build
+
+```bash
+# Build extension
+npm install
+npm run compile
+
+# Build settings panel (Node.js required)
+cd webview/settings
+npm install
+npm run build
+```
+
+### License
+
+MIT
