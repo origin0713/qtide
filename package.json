@@ -28,7 +28,7 @@
             "qtide_view": [
                 {
                     "id": "qtide.view.project",
-                    "name": "Project"
+                    "name": "QTIDE PROJECT"
                 },
                 {
                     "id": "qtide.view.operations",
@@ -76,6 +76,11 @@
                 "command": "qtide.copyPath",
                 "title": "Copy Path",
                 "category": "Qtide"
+            },
+            {
+                "command": "qtide.openSettings",
+                "title": "Open Qtide Settings",
+                "category": "Qtide"
             }
         ],
         "menus": {
@@ -112,7 +117,7 @@
         "viewsWelcome": [
             {
                 "view": "qtide.view.project",
-                "contents": "No Qt project found. Open a workspace folder or use Import Project to load .pro file(s)."
+                "contents": "%qtide.welcome%"
             }
         ]
     },

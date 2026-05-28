@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { ProFileParser } from './ProFileParser';
 import { QtProjectData, QtTreeItem, TreeItemType } from './QtTypeDefine';
 
@@ -50,9 +51,18 @@ class OperationDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> 
             command: 'qtide.importProject',
             title: 'Import Project'
         };
-        importItem.iconPath = new vscode.ThemeIcon('file-add');
+        importItem.iconPath = new vscode.ThemeIcon('cloud-download');
         importItem.tooltip = 'Import a Qt project from a .pro file';
         items.push(importItem);
+
+        const settingsItem = new vscode.TreeItem('Open Qtide Settings', vscode.TreeItemCollapsibleState.None);
+        settingsItem.command = {
+            command: 'qtide.openSettings',
+            title: 'Open Qtide Settings'
+        };
+        settingsItem.iconPath = new vscode.ThemeIcon('gear');
+        settingsItem.tooltip = 'Open Qtide settings panel';
+        items.push(settingsItem);
 
         return items;
     }
@@ -98,6 +108,10 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
 
     getTreeItem(element: QtTreeItem): vscode.TreeItem {
         return element;
+    }
+
+    refreshItem(item: QtTreeItem): void {
+        this._onDidChangeTreeData.fire(item);
     }
 
     getChildren(element?: QtTreeItem): vscode.ProviderResult<QtTreeItem[]> {
@@ -221,6 +235,8 @@ export class QtProjectExplorer {
     private fileWatchers: vscode.FileSystemWatcher[] = [];
     private refreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+    private settingsPanel: vscode.WebviewPanel | undefined;
+
     constructor(context: vscode.ExtensionContext) {
         this.operationProvider = new OperationDataProvider();
         this.projectProvider = new ProjectDataProvider();
@@ -235,6 +251,26 @@ export class QtProjectExplorer {
 
         context.subscriptions.push(this.operationView);
         context.subscriptions.push(this.projectView);
+
+        context.subscriptions.push(
+            this.projectView.onDidExpandElement(e => {
+                const item = e.element as QtTreeItem;
+                if (QtTreeItem.iconMap?.[item.type]) {
+                    item.updateExpandIcon(true);
+                    this.projectProvider.refreshItem(item);
+                }
+            })
+        );
+
+        context.subscriptions.push(
+            this.projectView.onDidCollapseElement(e => {
+                const item = e.element as QtTreeItem;
+                if (QtTreeItem.iconMap?.[item.type]) {
+                    item.updateExpandIcon(false);
+                    this.projectProvider.refreshItem(item);
+                }
+            })
+        );
 
         void this.scanWorkspace();
     }
@@ -261,20 +297,18 @@ export class QtProjectExplorer {
         const uris = await vscode.window.showOpenDialog({
             canSelectFiles: true,
             canSelectFolders: false,
-            canSelectMany: true,
+            canSelectMany: false,
             filters: {
                 'Qt Project Files': ['pro']
             },
-            title: 'Select Qt .pro file(s)'
+            title: 'Select Qt .pro file'
         });
 
         if (!uris || uris.length === 0) {
             return;
         }
 
-        for (const uri of uris) {
-            await this.loadProject(uri.fsPath);
-        }
+        await this.loadProject(uris[0].fsPath);
     }
 
     async openProject(): Promise<void> {
@@ -302,6 +336,82 @@ export class QtProjectExplorer {
         vscode.window.showInformationMessage('New Project: Feature under development.');
     }
 
+    async openSettings(): Promise<void> {
+        if (this.settingsPanel) {
+            this.settingsPanel.reveal();
+            return;
+        }
+
+        const panel = vscode.window.createWebviewPanel(
+            'qtide.settings',
+            'Qtide Settings',
+            vscode.ViewColumn.Active,
+            { enableScripts: true, retainContextWhenHidden: true }
+        );
+
+        panel.iconPath = vscode.Uri.joinPath(QtTreeItem.extensionUri, 'res', 'icon', 'qtide.svg');
+
+        const settingsDir = path.join(QtTreeItem.extensionUri.fsPath, 'res', 'html', 'settings');
+        const htmlFile = path.join(settingsDir, 'index.html');
+        let html = fs.readFileSync(htmlFile, 'utf-8');
+        html = html.replace(
+            /((?:src|href)=")([^"]+?\.(?:css|js))(")/gi,
+            (_, prefix, filePath, suffix) => {
+                const absPath = path.resolve(settingsDir, filePath);
+                return `${prefix}${panel.webview.asWebviewUri(vscode.Uri.file(absPath)).toString()}${suffix}`;
+            }
+        );
+        panel.webview.html = html;
+
+        const settingsModel = {
+            config: {
+                groups: [
+                    {
+                        label: 'General',
+                        id: 'general',
+                        fields: [
+                            { key: 'projectName', label: 'Project Name', type: 'text', value: '', description: 'Default project name for new projects' },
+                            { key: 'buildDir', label: 'Build Directory', type: 'text', value: 'build', description: 'Default build output directory' },
+                            { key: 'qtVersion', label: 'Qt Version', type: 'dropdown', value: '6.5', options: [{ label: 'Qt 5.15', value: '5.15' }, { label: 'Qt 6.2', value: '6.2' }, { label: 'Qt 6.5', value: '6.5' }, { label: 'Qt 6.6', value: '6.6' }] }
+                        ]
+                    },
+                    {
+                        label: 'Editor',
+                        id: 'editor',
+                        fields: [
+                            { key: 'autoComplete', label: 'Auto-complete', type: 'checkbox', value: true, description: 'Enable code auto-completion' },
+                            { key: 'formatOnSave', label: 'Format on Save', type: 'checkbox', value: false, description: 'Auto-format files when saving' },
+                            { key: 'tabSize', label: 'Tab Size', type: 'dropdown', value: '4', options: [{ label: '2 spaces', value: '2' }, { label: '4 spaces', value: '4' }, { label: '8 spaces', value: '8' }] }
+                        ]
+                    },
+                    {
+                        label: 'Build',
+                        id: 'build',
+                        fields: [
+                            { key: 'buildJobs', label: 'Parallel Jobs', type: 'dropdown', value: '4', options: [{ label: '1 job', value: '1' }, { label: '2 jobs', value: '2' }, { label: '4 jobs', value: '4' }, { label: '8 jobs', value: '8' }] },
+                            { key: 'makeFlags', label: 'Make Flags', type: 'textarea', value: '', description: 'Additional flags for make' },
+                            { key: 'cleanBeforeBuild', label: 'Clean before build', type: 'checkbox', value: false, description: 'Run clean target before building' }
+                        ]
+                    }
+                ]
+            }
+        };
+
+        panel.webview.onDidReceiveMessage(async (msg: any) => {
+            if (typeof msg === 'string') {
+                if (msg === 'qtide.settings.launched') {
+                    panel.webview.postMessage(settingsModel);
+                }
+            }
+        });
+
+        panel.onDidDispose(() => {
+            this.settingsPanel = undefined;
+        });
+
+        this.settingsPanel = panel;
+    }
+
     async loadProject(
         proFilePath: string,
         options?: { silent?: boolean }
@@ -319,11 +429,54 @@ export class QtProjectExplorer {
         this.setupWatchers();
 
         if (!options?.silent) {
-            vscode.window.showInformationMessage(
+            console.log(
                 `Project "${data.name}" loaded. ` +
                 `Sources: ${data.sources.length}, Headers: ${data.headers.length}, ` +
                 `Forms: ${data.forms.length}, Resources: ${data.resources.length}`
             );
+            await this.promptSaveWorkspace(data);
+        }
+    }
+
+    private async promptSaveWorkspace(data: QtProjectData): Promise<void> {
+        const selection = await vscode.window.showInformationMessage(
+            `Project "${data.name}" imported. Save a workspace file and open project?`,
+            'Continue', 'Cancel'
+        );
+
+        let targetPath: string | undefined;
+
+        if (selection === 'Continue') {
+            targetPath = path.join(data.proFileDir, `${data.name}.code-workspace`);
+        } else if (selection === 'Cancel') {
+            const defaultUri = vscode.Uri.file(
+                path.join(data.proFileDir, `${data.name}.code-workspace`)
+            );
+            const uri = await vscode.window.showSaveDialog({
+                defaultUri,
+                filters: { 'VS Code Workspace': ['code-workspace'] },
+                title: 'Save Workspace File As'
+            });
+            if (uri) {
+                targetPath = uri.fsPath;
+            }
+        }
+
+        if (targetPath) {
+            const workspaceContent = {
+                folders: [{ path: '.' }],
+                settings: {}
+            };
+            try {
+                fs.writeFileSync(targetPath, JSON.stringify(workspaceContent, null, 4));
+                vscode.window.showInformationMessage(
+                    `Workspace file saved: ${path.basename(targetPath)}`
+                );
+            } catch (error) {
+                vscode.window.showErrorMessage(
+                    `Failed to save workspace file: ${error}`
+                );
+            }
         }
     }
 

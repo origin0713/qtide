@@ -1,0 +1,3 @@
+{
+    "qtide.welcome": "No Qt project found in this workspace!\n[Open Project](command:qtide.openProject)\n[New Project](command:qtide.newProject)\n[Import Project](command:qtide.importProject)"
+}

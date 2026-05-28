@@ -42,6 +42,8 @@ export interface QtProjectData {
  */
 export class QtTreeItem extends vscode.TreeItem {
 
+    static extensionUri: vscode.Uri;
+
     type: TreeItemType;
     projectData: QtProjectData;
     /** 文件相对路径（仅 FILE 类型节点使用） */
@@ -62,22 +64,41 @@ export class QtTreeItem extends vscode.TreeItem {
         this.setupAppearance();
     }
 
+    static iconMap: Record<string, { open: string; close: string }> = {
+        [TreeItemType.PROJECT]: { open: 'qt_open.svg', close: 'qt_close.svg' },
+        [TreeItemType.HEADERS_GROUP]: { open: 'h_open.svg', close: 'h_close.svg' },
+        [TreeItemType.SOURCES_GROUP]: { open: 'cpp_open.svg', close: 'cpp_close.svg' },
+        [TreeItemType.FORMS_GROUP]: { open: 'pen_open.svg', close: 'pen_close.svg' },
+        [TreeItemType.RESOURCES_GROUP]: { open: 'res_open.svg', close: 'res_close.svg' },
+    };
+
+    private setExpandableIcon(isExpanded: boolean): void {
+        const pair = QtTreeItem.iconMap[this.type];
+        if (pair) {
+            this.iconPath = vscode.Uri.joinPath(
+                QtTreeItem.extensionUri, 'res', 'icon',
+                isExpanded ? pair.open : pair.close
+            );
+        }
+    }
+
+    updateExpandIcon(isExpanded: boolean): void {
+        this.setExpandableIcon(isExpanded);
+    }
+
     private setupAppearance(): void {
         switch (this.type) {
             case TreeItemType.PROJECT:
-                this.iconPath = new vscode.ThemeIcon('project');
+                this.setExpandableIcon(true);
                 this.contextValue = 'project';
-                this.description = this.projectData.name;
-                this.tooltip = `${this.projectData.name}
-Path: ${this.projectData.proFileDir}
-Sources: ${this.projectData.sources.length} | Headers: ${this.projectData.headers.length} | Forms: ${this.projectData.forms.length} | Resources: ${this.projectData.resources.length}`;
+                this.tooltip = `Name: ${this.projectData.name}\nPath: ${this.projectData.proFileDir}`;
                 break;
 
             case TreeItemType.PRO_FILE:
-                this.iconPath = new vscode.ThemeIcon('gear');
+                this.iconPath = vscode.ThemeIcon.File;
+                this.resourceUri = vscode.Uri.file(this.projectData.proFilePath);
                 this.contextValue = 'qtFile';
-                this.description = 'Project File';
-                this.tooltip = `Qt Project File\n${this.projectData.proFilePath}`;
+                this.tooltip = `${this.projectData.proFilePath}`;
                 this.command = {
                     command: 'vscode.open',
                     title: 'Open File',
@@ -86,58 +107,54 @@ Sources: ${this.projectData.sources.length} | Headers: ${this.projectData.header
                 break;
 
             case TreeItemType.HEADERS_GROUP:
-                this.iconPath = new vscode.ThemeIcon('symbol-struct');
+                this.setExpandableIcon(true);
                 this.contextValue = 'headersGroup';
-                this.description = `${this.projectData.headers.length} files`;
                 this.tooltip = `Headers (${this.projectData.headers.length} files)\n${this.projectData.headers.map(f => '  • ' + path.basename(f)).join('\n')}`;
                 break;
 
             case TreeItemType.SOURCES_GROUP:
-                this.iconPath = new vscode.ThemeIcon('symbol-class');
+                this.setExpandableIcon(true);
                 this.contextValue = 'sourcesGroup';
-                this.description = `${this.projectData.sources.length} files`;
                 this.tooltip = `Sources (${this.projectData.sources.length} files)\n${this.projectData.sources.map(f => '  • ' + path.basename(f)).join('\n')}`;
                 break;
 
             case TreeItemType.FORMS_GROUP:
-                this.iconPath = new vscode.ThemeIcon('symbol-interface');
+                this.setExpandableIcon(true);
                 this.contextValue = 'formsGroup';
-                this.description = `${this.projectData.forms.length} files`;
                 this.tooltip = `Forms (${this.projectData.forms.length} files)\n${this.projectData.forms.map(f => '  • ' + path.basename(f)).join('\n')}`;
                 break;
 
             case TreeItemType.RESOURCES_GROUP:
-                this.iconPath = new vscode.ThemeIcon('symbol-misc');
+                this.setExpandableIcon(true);
                 this.contextValue = 'resourcesGroup';
-                this.description = `${this.projectData.resources.length} files`;
                 this.tooltip = `Resources (${this.projectData.resources.length} files)\n${this.projectData.resources.map(f => '  • ' + path.basename(f)).join('\n')}`;
                 break;
 
             case TreeItemType.HEADER_FILE:
-                this.iconPath = new vscode.ThemeIcon('symbol-field');
+                this.iconPath = vscode.ThemeIcon.File;
+                this.resourceUri = vscode.Uri.file(this.getFullPath());
                 this.contextValue = 'qtFile';
-                this.description = 'Header';
                 this.setFileCommand();
                 break;
 
             case TreeItemType.SOURCE_FILE:
-                this.iconPath = new vscode.ThemeIcon('symbol-method');
+                this.iconPath = vscode.ThemeIcon.File;
+                this.resourceUri = vscode.Uri.file(this.getFullPath());
                 this.contextValue = 'qtFile';
-                this.description = 'Source';
                 this.setFileCommand();
                 break;
 
             case TreeItemType.FORM_FILE:
-                this.iconPath = new vscode.ThemeIcon('symbol-property');
+                this.iconPath = vscode.ThemeIcon.File;
+                this.resourceUri = vscode.Uri.file(this.getFullPath());
                 this.contextValue = 'qtFile';
-                this.description = 'UI Form';
                 this.setFileCommand();
                 break;
 
             case TreeItemType.RESOURCE_FILE:
-                this.iconPath = new vscode.ThemeIcon('symbol-enum');
+                this.iconPath = vscode.ThemeIcon.File;
+                this.resourceUri = vscode.Uri.file(this.getFullPath());
                 this.contextValue = 'qtFile';
-                this.description = 'Resource';
                 this.setFileCommand();
                 break;
         }
@@ -152,24 +169,7 @@ Sources: ${this.projectData.sources.length} | Headers: ${this.projectData.header
                 arguments: [vscode.Uri.file(fullPath)]
             };
 
-            // 根据文件类型设置不同的工具提示
-            let fileTypeInfo = '';
-            switch (this.type) {
-                case TreeItemType.HEADER_FILE:
-                    fileTypeInfo = 'Header File';
-                    break;
-                case TreeItemType.SOURCE_FILE:
-                    fileTypeInfo = 'Source File';
-                    break;
-                case TreeItemType.FORM_FILE:
-                    fileTypeInfo = 'UI Form File';
-                    break;
-                case TreeItemType.RESOURCE_FILE:
-                    fileTypeInfo = 'Resource File';
-                    break;
-            }
-
-            this.tooltip = `${fileTypeInfo}\n${fullPath}`;
+            this.tooltip = fullPath;
         }
     }
 
@@ -182,6 +182,11 @@ Sources: ${this.projectData.sources.length} | Headers: ${this.projectData.header
             type === TreeItemType.SOURCE_FILE ||
             type === TreeItemType.FORM_FILE ||
             type === TreeItemType.RESOURCE_FILE;
+    }
+
+    /** Full path for file items (relative filePath + project dir); panics if filePath is undefined */
+    private getFullPath(): string {
+        return path.join(this.projectData.proFileDir, this.filePath!);
     }
 
     /** Absolute path for file nodes; undefined for groups and project root */

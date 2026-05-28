@@ -59,6 +59,8 @@ async function promptToOpenWorkspaceForPro(proFilePath: string): Promise<void> {
 export function activate(context: vscode.ExtensionContext) {
     console.log('Qtide extension is now active!');
 
+    QtTreeItem.extensionUri = context.extensionUri;
+
     // 创建项目资源管理器（操作视图 + 项目树视图）
     projectExplorer = new QtProjectExplorer(context);
 
@@ -78,6 +80,12 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('qtide.importProject', () => {
             projectExplorer.importProject();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('qtide.openSettings', () => {
+            projectExplorer.openSettings();
         })
     );
 
