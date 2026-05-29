@@ -10,7 +10,10 @@
 			"type": "extensionHost",
 			"request": "launch",
 			"args": [
-				"--extensionDevelopmentPath=${workspaceFolder}"
+                // "--profile-temp", // 临时 profile
+                "--profile",
+                "test",    // 指定的 Profile 名称
+				"--extensionDevelopmentPath=${workspaceFolder}" // 指定扩展路径
 			],
 			"outFiles": [
 				"${workspaceFolder}/out/**/*.js"

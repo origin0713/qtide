@@ -2,7 +2,7 @@
     "name": "qtide",
     "displayName": "Qt IDE",
     "description": "qtcreator的代码辅助编写插件",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "publisher": "origin0713",
     "repository": {
         "type": "git",
@@ -13,7 +13,7 @@
         "vscode": "^1.116.0"
     },
     "categories": [
-        "Other"
+        "Extension Packs"
     ],
     "activationEvents": [
         "onStartupFinished"
@@ -156,5 +156,9 @@
     },
     "volta": {
         "node": "24.15.0"
-    }
+    },
+    "extensionPack": [
+        "origin0713.qtide",
+        "theqtcompany.qt-cpp-pack"
+    ]
 }
