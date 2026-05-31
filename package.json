@@ -2,7 +2,7 @@
     "name": "qtide",
     "displayName": "Qt IDE",
     "description": "qtcreator的代码辅助编写插件",
-    "version": "0.0.3",
+    "version": "0.0.4",
     "publisher": "origin0713",
     "repository": {
         "type": "git",

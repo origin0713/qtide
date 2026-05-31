@@ -71,9 +71,23 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
     private projects: QtProjectData[] = [];
+    private dirExpandStates = new Map<string, boolean>();
+
+    setDirExpandState(key: string, expanded: boolean): void {
+        this.dirExpandStates.set(key, expanded);
+    }
+
+    getDirExpandState(key: string): boolean {
+        return this.dirExpandStates.get(key) ?? false;
+    }
+
+    clearDirExpandStates(): void {
+        this.dirExpandStates.clear();
+    }
 
     setProjects(projects: QtProjectData[]): void {
         this.projects = projects;
+        this.dirExpandStates.clear();
         this._onDidChangeTreeData.fire(undefined);
     }
 
@@ -88,6 +102,7 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
         } else {
             this.projects.push(data);
         }
+        this.dirExpandStates.clear();
         this._onDidChangeTreeData.fire(undefined);
     }
 
@@ -95,6 +110,7 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
         const before = this.projects.length;
         this.projects = this.projects.filter(p => p.proFilePath !== proFilePath);
         if (this.projects.length !== before) {
+            this.dirExpandStates.clear();
             this._onDidChangeTreeData.fire(undefined);
         }
     }
@@ -263,7 +279,9 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
 
         for (const dirKey of dirKeys) {
             const fullDir = commonBase ? commonBase + '/' + dirKey : dirKey;
-            result.push(new QtTreeItem(
+            const stateKey = `${projectData.proFilePath}:${groupType}:${fullDir}`;
+            const wasExpanded = this.getDirExpandState(stateKey);
+            const dirNode = new QtTreeItem(
                 path.basename(dirKey),
                 TreeItemType.DIR_GROUP,
                 projectData,
@@ -271,7 +289,9 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
                 undefined,
                 groupType,
                 fullDir
-            ));
+            );
+            dirNode.updateExpandIcon(wasExpanded);
+            result.push(dirNode);
         }
 
         return result;
@@ -370,6 +390,10 @@ export class QtProjectExplorer {
         context.subscriptions.push(
             this.projectView.onDidExpandElement(e => {
                 const item = e.element as QtTreeItem;
+                if (item.type === TreeItemType.DIR_GROUP) {
+                    const key = `${item.projectData.proFilePath}:${item.parentGroupType}:${item.dirPath}`;
+                    this.projectProvider.setDirExpandState(key, true);
+                }
                 if (QtTreeItem.iconMap?.[item.type]) {
                     item.updateExpandIcon(true);
                     this.projectProvider.refreshItem(item);
@@ -380,6 +404,10 @@ export class QtProjectExplorer {
         context.subscriptions.push(
             this.projectView.onDidCollapseElement(e => {
                 const item = e.element as QtTreeItem;
+                if (item.type === TreeItemType.DIR_GROUP) {
+                    const key = `${item.projectData.proFilePath}:${item.parentGroupType}:${item.dirPath}`;
+                    this.projectProvider.setDirExpandState(key, false);
+                }
                 if (QtTreeItem.iconMap?.[item.type]) {
                     item.updateExpandIcon(false);
                     this.projectProvider.refreshItem(item);
