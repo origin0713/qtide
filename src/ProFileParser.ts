@@ -1,17 +1,8 @@
 import * as path from 'path';
 import { QtProjectData } from './QtTypeDefine';
 
-/**
- * .pro 文件解析器
- * 解析 qmake 工程文件，提取项目名称、源文件、头文件、UI文件和资源文件列表
- */
 export class ProFileParser {
 
-    /**
-     * 解析 .pro 文件
-     * @param proFilePath .pro 文件的绝对路径
-     * @returns 解析后的项目数据，解析失败返回 null
-     */
     static parse(proFilePath: string): QtProjectData | null {
         const fs = require('fs');
 
@@ -26,18 +17,13 @@ export class ProFileParser {
         const proFileDir = path.dirname(proFilePath);
         const proFileName = path.basename(proFilePath);
 
-        // 预处理：合并续行、去除注释
         const lines = ProFileParser.preprocess(content);
+        const vars = ProFileParser.parseVariables(lines, proFileDir);
 
-        // 解析变量
-        const vars = ProFileParser.parseVariables(lines);
-
-        // 提取 TARGET
         const targetArr = vars['TARGET'];
         const target = (targetArr && targetArr.length > 0) ? targetArr[0] : path.basename(proFileName, '.pro');
 
-        // 构建项目数据
-        const data: QtProjectData = {
+        return {
             name: target,
             proFilePath: proFilePath,
             proFileDir: proFileDir,
@@ -46,24 +32,15 @@ export class ProFileParser {
             forms: vars['FORMS'] || [],
             resources: vars['RESOURCES'] || [],
         };
-
-        return data;
     }
 
-    /**
-     * 预处理 .pro 文件内容：
-     * 1. 去除注释（# 开头的部分）
-     * 2. 合并续行（行末 \ 表示下一行继续）
-     * @returns 处理后的行数组
-     */
     private static preprocess(content: string): string[] {
         const rawLines = content.split(/\r?\n/);
         const mergedLines: string[] = [];
         let currentLine = '';
 
         for (const rawLine of rawLines) {
-            let line = ProFileParser.stripComment(rawLine);
-            const trimmed = line.trim();
+            const trimmed = ProFileParser.stripComment(rawLine).trim();
 
             if (trimmed.length === 0) {
                 if (currentLine.trim().length > 0) {
@@ -89,10 +66,6 @@ export class ProFileParser {
         return mergedLines;
     }
 
-    /**
-     * 去除行内注释
-     * 简单处理：找到第一个 # 并截断（不考虑引号内情况）
-     */
     private static stripComment(line: string): string {
         const commentIdx = line.indexOf('#');
         if (commentIdx >= 0) {
@@ -101,47 +74,75 @@ export class ProFileParser {
         return line;
     }
 
-    /**
-     * 解析变量赋值
-     * 支持：
-     * - VAR = value
-     * - VAR += value
-     * - 变量值中的空格分隔多个文件
-     */
-    private static parseVariables(lines: string[]): Record<string, string[]> {
-        const vars: Record<string, string[]> = {};
+    private static parseVariables(lines: string[], proFileDir: string): Record<string, string[]> {
+        const rawVars: Record<string, string[]> = {};
+
+        const assignRegex = /^(\w+)\s*(\+?=)\s*(.*)$/;
 
         for (const line of lines) {
-            // 匹配 VAR = value 或 VAR += value
-            const match = line.match(/^(\w+)\s*(\+?=)\s*(.*)$/);
-            if (!match) {
-                continue;
-            }
+            const match = line.match(assignRegex);
+            if (!match) continue;
 
             const varName = match[1];
-            const operator = match[2]; // '=' or '+='
+            const operator = match[2];
             const rawValue = match[3].trim();
+            if (rawValue.length === 0) continue;
 
-            if (rawValue.length === 0) {
-                continue;
-            }
-
-            // 按空格分割值
             const values = rawValue.split(/\s+/).filter(v => v.length > 0);
 
             if (operator === '+=') {
-                // 追加模式
-                if (!vars[varName]) {
-                    vars[varName] = [];
-                }
-                vars[varName].push(...values);
+                if (!rawVars[varName]) rawVars[varName] = [];
+                rawVars[varName].push(...values);
             } else {
-                // 赋值模式
-                vars[varName] = values;
+                rawVars[varName] = values;
             }
         }
 
-        return vars;
+        const resolved = ProFileParser.resolveReferences(rawVars, proFileDir);
+
+        const fileKeys = ['HEADERS', 'SOURCES', 'FORMS', 'RESOURCES'];
+        const result: Record<string, string[]> = {};
+        for (const key of fileKeys) {
+            result[key] = [];
+            const raw = resolved[key] || [];
+            for (const val of raw) {
+                const resolvedVal = ProFileParser.resolveVarRef(val, resolved, proFileDir);
+                result[key].push(resolvedVal);
+            }
+        }
+
+        result['TARGET'] = resolved['TARGET'] || [];
+
+        return result;
+    }
+
+    private static resolveReferences(
+        vars: Record<string, string[]>,
+        proFileDir: string
+    ): Record<string, string[]> {
+        const resolved: Record<string, string[]> = {};
+
+        resolved['PWD'] = [proFileDir];
+
+        for (const key of Object.keys(vars)) {
+            resolved[key] = vars[key].map(v => ProFileParser.resolveVarRef(v, resolved, proFileDir));
+        }
+
+        return resolved;
+    }
+
+    private static resolveVarRef(
+        value: string,
+        vars: Record<string, string[]>,
+        proFileDir: string
+    ): string {
+        return value.replace(/\$\$(\w+)/g, (match, varName) => {
+            if (varName === 'PWD') return proFileDir;
+            const ref = vars[varName];
+            if (ref && ref.length > 0) {
+                return ref[0];
+            }
+            return match;
+        });
     }
 }
-

@@ -12,7 +12,7 @@
 			"args": [
                 // "--profile-temp", // 临时 profile
                 "--profile",
-                "test",    // 指定的 Profile 名称
+                "QT_VsCode",    // 指定的 Profile 名称
 				"--extensionDevelopmentPath=${workspaceFolder}" // 指定扩展路径
 			],
 			"outFiles": [

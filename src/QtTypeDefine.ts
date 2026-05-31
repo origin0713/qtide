@@ -11,6 +11,7 @@ export enum TreeItemType {
     SOURCES_GROUP,
     FORMS_GROUP,
     RESOURCES_GROUP,
+    DIR_GROUP,
     HEADER_FILE,
     SOURCE_FILE,
     FORM_FILE,
@@ -46,20 +47,25 @@ export class QtTreeItem extends vscode.TreeItem {
 
     type: TreeItemType;
     projectData: QtProjectData;
-    /** 文件相对路径（仅 FILE 类型节点使用） */
     filePath?: string;
+    parentGroupType?: TreeItemType;
+    dirPath?: string;
 
     constructor(
         label: string,
         type: TreeItemType,
         projectData: QtProjectData,
         collapsibleState: vscode.TreeItemCollapsibleState,
-        filePath?: string
+        filePath?: string,
+        parentGroupType?: TreeItemType,
+        dirPath?: string
     ) {
         super(label, collapsibleState);
         this.type = type;
         this.projectData = projectData;
         this.filePath = filePath;
+        this.parentGroupType = parentGroupType;
+        this.dirPath = dirPath;
 
         this.setupAppearance();
     }
@@ -70,6 +76,7 @@ export class QtTreeItem extends vscode.TreeItem {
         [TreeItemType.SOURCES_GROUP]: { open: 'cpp_open.svg', close: 'cpp_close.svg' },
         [TreeItemType.FORMS_GROUP]: { open: 'pen_open.svg', close: 'pen_close.svg' },
         [TreeItemType.RESOURCES_GROUP]: { open: 'res_open.svg', close: 'res_close.svg' },
+        [TreeItemType.DIR_GROUP]: { open: 'dir_open.svg', close: 'dir_close.svg' },
     };
 
     private setExpandableIcon(isExpanded: boolean): void {
@@ -128,6 +135,12 @@ export class QtTreeItem extends vscode.TreeItem {
                 this.setExpandableIcon(true);
                 this.contextValue = 'resourcesGroup';
                 this.tooltip = `Resources (${this.projectData.resources.length} files)\n${this.projectData.resources.map(f => '  • ' + path.basename(f)).join('\n')}`;
+                break;
+
+            case TreeItemType.DIR_GROUP:
+                this.setExpandableIcon(false);
+                this.contextValue = 'dirGroup';
+                this.tooltip = this.dirPath;
                 break;
 
             case TreeItemType.HEADER_FILE:
@@ -205,3 +218,4 @@ export class QtTreeItem extends vscode.TreeItem {
         return absPath ? vscode.Uri.file(absPath) : undefined;
     }
 }
+

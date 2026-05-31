@@ -125,16 +125,19 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
                 return this.getProjectChildren(element.projectData);
 
             case TreeItemType.HEADERS_GROUP:
-                return this.getFileChildren(element.projectData, element.projectData.headers, TreeItemType.HEADER_FILE);
+                return this.getFileChildren(element.projectData, element.projectData.headers, TreeItemType.HEADERS_GROUP);
 
             case TreeItemType.SOURCES_GROUP:
-                return this.getFileChildren(element.projectData, element.projectData.sources, TreeItemType.SOURCE_FILE);
+                return this.getFileChildren(element.projectData, element.projectData.sources, TreeItemType.SOURCES_GROUP);
 
             case TreeItemType.FORMS_GROUP:
-                return this.getFileChildren(element.projectData, element.projectData.forms, TreeItemType.FORM_FILE);
+                return this.getFileChildren(element.projectData, element.projectData.forms, TreeItemType.FORMS_GROUP);
 
             case TreeItemType.RESOURCES_GROUP:
-                return this.getFileChildren(element.projectData, element.projectData.resources, TreeItemType.RESOURCE_FILE);
+                return this.getFileChildren(element.projectData, element.projectData.resources, TreeItemType.RESOURCES_GROUP);
+
+            case TreeItemType.DIR_GROUP:
+                return this.getDirGroupChildren(element);
 
             default:
                 return [];
@@ -197,15 +200,140 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
     private getFileChildren(
         projectData: QtProjectData,
         files: string[],
-        fileType: TreeItemType
+        groupType: TreeItemType
     ): QtTreeItem[] {
-        return files.map(filePath => new QtTreeItem(
-            path.basename(filePath),
-            fileType,
-            projectData,
-            vscode.TreeItemCollapsibleState.None,
-            filePath
-        ));
+        const fileType = this.getFileTypeForGroup(groupType);
+        const proFileDir = projectData.proFileDir;
+
+        const relDirs = files.map(f => {
+            const absDir = path.resolve(proFileDir, path.dirname(f));
+            return path.relative(proFileDir, absDir).replace(/\\/g, '/');
+        });
+
+        const dirSet = new Set(relDirs);
+        dirSet.delete('.');
+        const commonBase = this.findCommonPrefix([...dirSet]);
+
+        const dirMap = new Map<string, string[]>();
+        for (let i = 0; i < files.length; i++) {
+            const filePath = files[i];
+            let dir = relDirs[i];
+
+            if (commonBase && dir.startsWith(commonBase)) {
+                const suffix = dir.slice(commonBase.length);
+                dir = suffix.startsWith('/') ? suffix.slice(1) : '__root__';
+                if (dir.length === 0) dir = '__root__';
+            } else if (dir === '.') {
+                dir = '__root__';
+            }
+
+            if (!dirMap.has(dir)) {
+                dirMap.set(dir, []);
+            }
+            dirMap.get(dir)!.push(filePath);
+        }
+
+        const dirKeys = [...dirMap.keys()].filter(k => k !== '__root__');
+
+        if (dirKeys.length === 1 && !dirMap.has('__root__')) {
+            const flatFiles = dirMap.get(dirKeys[0])!;
+            return flatFiles.map(fp => new QtTreeItem(
+                path.basename(fp),
+                fileType,
+                projectData,
+                vscode.TreeItemCollapsibleState.None,
+                fp
+            ));
+        }
+
+        const result: QtTreeItem[] = [];
+
+        const rootFiles = dirMap.get('__root__');
+        if (rootFiles) {
+            for (const fp of rootFiles) {
+                result.push(new QtTreeItem(
+                    path.basename(fp),
+                    fileType,
+                    projectData,
+                    vscode.TreeItemCollapsibleState.None,
+                    fp
+                ));
+            }
+        }
+
+        for (const dirKey of dirKeys) {
+            const fullDir = commonBase ? commonBase + '/' + dirKey : dirKey;
+            result.push(new QtTreeItem(
+                path.basename(dirKey),
+                TreeItemType.DIR_GROUP,
+                projectData,
+                vscode.TreeItemCollapsibleState.Collapsed,
+                undefined,
+                groupType,
+                fullDir
+            ));
+        }
+
+        return result;
+    }
+
+    private findCommonPrefix(dirs: string[]): string | undefined {
+        if (dirs.length <= 1) return undefined;
+        const parts = dirs.map(d => d.split('/'));
+        const minLen = Math.min(...parts.map(p => p.length));
+        if (minLen === 0) return undefined;
+        const common: string[] = [];
+        for (let i = 0; i < minLen; i++) {
+            const p = parts[0][i];
+            if (parts.every(arr => arr[i] === p)) {
+                common.push(p);
+            } else {
+                break;
+            }
+        }
+        return common.length > 0 ? common.join('/') : undefined;
+    }
+
+    private getDirGroupChildren(element: QtTreeItem): QtTreeItem[] {
+        const { projectData, dirPath, parentGroupType } = element;
+        if (!dirPath || !parentGroupType) return [];
+
+        const fileType = this.getFileTypeForGroup(parentGroupType);
+        const files = this.getFilesForGroup(projectData, parentGroupType);
+
+        return files
+            .filter(f => {
+                const absDir = path.resolve(projectData.proFileDir, path.dirname(f));
+                const relDir = path.relative(projectData.proFileDir, absDir).replace(/\\/g, '/');
+                return relDir === dirPath;
+            })
+            .map(filePath => new QtTreeItem(
+                path.basename(filePath),
+                fileType,
+                projectData,
+                vscode.TreeItemCollapsibleState.None,
+                filePath
+            ));
+    }
+
+    private getFileTypeForGroup(groupType: TreeItemType): TreeItemType {
+        switch (groupType) {
+            case TreeItemType.HEADERS_GROUP: return TreeItemType.HEADER_FILE;
+            case TreeItemType.SOURCES_GROUP: return TreeItemType.SOURCE_FILE;
+            case TreeItemType.FORMS_GROUP: return TreeItemType.FORM_FILE;
+            case TreeItemType.RESOURCES_GROUP: return TreeItemType.RESOURCE_FILE;
+            default: return TreeItemType.HEADER_FILE;
+        }
+    }
+
+    private getFilesForGroup(projectData: QtProjectData, groupType: TreeItemType): string[] {
+        switch (groupType) {
+            case TreeItemType.HEADERS_GROUP: return projectData.headers;
+            case TreeItemType.SOURCES_GROUP: return projectData.sources;
+            case TreeItemType.FORMS_GROUP: return projectData.forms;
+            case TreeItemType.RESOURCES_GROUP: return projectData.resources;
+            default: return [];
+        }
     }
 }
 
@@ -431,7 +559,8 @@ export class QtProjectExplorer {
 
         await vscode.commands.executeCommand(
             'vscode.openFolder',
-            vscode.Uri.file(targetPath)
+            vscode.Uri.file(targetPath),
+            false
         );
     }
 
@@ -580,7 +709,8 @@ export class QtProjectExplorer {
                 if (openSelection === 'Yes') {
                     await vscode.commands.executeCommand(
                         'vscode.openFolder',
-                        vscode.Uri.file(targetPath)
+                        vscode.Uri.file(targetPath),
+                        false
                     );
                 }
             } catch (error) {
@@ -727,6 +857,7 @@ export class QtProjectExplorer {
         this.projectView.dispose();
     }
 }
+
 
 
 
