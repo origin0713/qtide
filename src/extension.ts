@@ -5,11 +5,14 @@ import { QtTreeItem } from './QtTypeDefine';
 
 let projectExplorer: QtProjectExplorer;
 
-async function promptToOpenWorkspaceForPro(proFilePath: string): Promise<void> {
+async function promptToOpenWorkspaceForProject(projectFilePath: string): Promise<void> {
     const fs = require('fs') as typeof import('fs');
 
-    const dir = path.dirname(proFilePath);
-    const baseName = path.basename(proFilePath, '.pro');
+    const dir = path.dirname(projectFilePath);
+    const fileName = path.basename(projectFilePath);
+    const baseName = fileName === 'CMakeLists.txt'
+        ? path.basename(dir)
+        : path.basename(projectFilePath, '.pro');
 
     const preferredWorkspace = path.join(dir, `${baseName}.code-workspace`);
 
@@ -39,7 +42,7 @@ async function promptToOpenWorkspaceForPro(proFilePath: string): Promise<void> {
 
     const workspaceName = path.basename(workspacePath);
     const selection = await vscode.window.showInformationMessage(
-        `Detected workspace file "${workspaceName}" for this Qt project. Do you want to open it?`,
+        `Detected workspace file "${workspaceName}" for project "${baseName}". Do you want to open it?`,
         'Open Workspace',
         'Cancel'
     );
@@ -122,8 +125,9 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.workspace.onDidOpenTextDocument(doc => {
             const filePath = doc.fileName;
-            if (filePath.toLowerCase().endsWith('.pro')) {
-                void promptToOpenWorkspaceForPro(filePath);
+            const lower = filePath.toLowerCase();
+            if (lower.endsWith('.pro') || lower.endsWith('cmakelists.txt')) {
+                void promptToOpenWorkspaceForProject(filePath);
             }
         })
     );

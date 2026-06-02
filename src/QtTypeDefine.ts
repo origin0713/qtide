@@ -16,18 +16,27 @@ export enum TreeItemType {
     SOURCE_FILE,
     FORM_FILE,
     RESOURCE_FILE,
+    OTHER_FILES_GROUP,
+    OTHER_FILE,
 }
 
 /**
  * .pro 文件解析后的项目数据结构
  */
+export enum ProjectType {
+    QMAKE = 'qmake',
+    CMAKE = 'cmake',
+}
+
 export interface QtProjectData {
-    /** 工程名称 (TARGET) */
+    /** 工程名称 (TARGET / project name) */
     name: string;
-    /** .pro 文件的绝对路径 */
-    proFilePath: string;
-    /** .pro 文件所在目录的绝对路径 */
-    proFileDir: string;
+    /** 项目类型 */
+    projectType: ProjectType;
+    /** 项目文件（.pro / CMakeLists.txt）的绝对路径 */
+    projectFilePath: string;
+    /** 项目文件所在目录的绝对路径 */
+    projectFileDir: string;
     /** HEADERS 文件列表（相对路径） */
     headers: string[];
     /** SOURCES 文件列表（相对路径） */
@@ -36,6 +45,8 @@ export interface QtProjectData {
     forms: string[];
     /** RESOURCES 文件列表（相对路径） */
     resources: string[];
+    /** 翻译文件列表（可选） */
+    translations?: string[];
 }
 
 /**
@@ -77,6 +88,7 @@ export class QtTreeItem extends vscode.TreeItem {
         [TreeItemType.FORMS_GROUP]: { open: 'pen_open.svg', close: 'pen_close.svg' },
         [TreeItemType.RESOURCES_GROUP]: { open: 'res_open.svg', close: 'res_close.svg' },
         [TreeItemType.DIR_GROUP]: { open: 'dir_open.svg', close: 'dir_close.svg' },
+        [TreeItemType.OTHER_FILES_GROUP]: { open: 'other_open.svg', close: 'other_close.svg' },
     };
 
     private setExpandableIcon(isExpanded: boolean): void {
@@ -98,18 +110,18 @@ export class QtTreeItem extends vscode.TreeItem {
             case TreeItemType.PROJECT:
                 this.setExpandableIcon(true);
                 this.contextValue = 'project';
-                this.tooltip = `Name: ${this.projectData.name}\nPath: ${this.projectData.proFileDir}`;
+                this.tooltip = `Name: ${this.projectData.name}\nPath: ${this.projectData.projectFileDir}`;
                 break;
 
             case TreeItemType.PRO_FILE:
                 this.iconPath = vscode.ThemeIcon.File;
-                this.resourceUri = vscode.Uri.file(this.projectData.proFilePath);
+                this.resourceUri = vscode.Uri.file(this.projectData.projectFilePath);
                 this.contextValue = 'qtFile';
-                this.tooltip = `${this.projectData.proFilePath}`;
+                this.tooltip = `${this.projectData.projectFilePath}`;
                 this.command = {
                     command: 'vscode.open',
                     title: 'Open File',
-                    arguments: [vscode.Uri.file(this.projectData.proFilePath)]
+                    arguments: [vscode.Uri.file(this.projectData.projectFilePath)]
                 };
                 break;
 
@@ -170,12 +182,25 @@ export class QtTreeItem extends vscode.TreeItem {
                 this.contextValue = 'qtFile';
                 this.setFileCommand();
                 break;
+
+            case TreeItemType.OTHER_FILES_GROUP:
+                this.setExpandableIcon(true);
+                this.contextValue = 'otherFilesGroup';
+                this.tooltip = `Other files (${(this.projectData.translations || []).length} files)\n${(this.projectData.translations || []).map(f => '  • ' + path.basename(f)).join('\n')}`;
+                break;
+
+            case TreeItemType.OTHER_FILE:
+                this.iconPath = vscode.ThemeIcon.File;
+                this.resourceUri = vscode.Uri.file(this.getFullPath());
+                this.contextValue = 'qtFile';
+                this.setFileCommand();
+                break;
         }
     }
 
     private setFileCommand(): void {
         if (this.filePath) {
-            const fullPath = path.join(this.projectData.proFileDir, this.filePath);
+            const fullPath = path.join(this.projectData.projectFileDir, this.filePath);
             this.command = {
                 command: 'vscode.open',
                 title: 'Open File',
@@ -194,21 +219,22 @@ export class QtTreeItem extends vscode.TreeItem {
             type === TreeItemType.HEADER_FILE ||
             type === TreeItemType.SOURCE_FILE ||
             type === TreeItemType.FORM_FILE ||
-            type === TreeItemType.RESOURCE_FILE;
+            type === TreeItemType.RESOURCE_FILE ||
+            type === TreeItemType.OTHER_FILE;
     }
 
     /** Full path for file items (relative filePath + project dir); panics if filePath is undefined */
     private getFullPath(): string {
-        return path.join(this.projectData.proFileDir, this.filePath!);
+        return path.join(this.projectData.projectFileDir, this.filePath!);
     }
 
     /** Absolute path for file nodes; undefined for groups and project root */
     getAbsolutePath(): string | undefined {
         if (this.type === TreeItemType.PRO_FILE) {
-            return this.projectData.proFilePath;
+            return this.projectData.projectFilePath;
         }
         if (this.filePath) {
-            return path.join(this.projectData.proFileDir, this.filePath);
+            return path.join(this.projectData.projectFileDir, this.filePath);
         }
         return undefined;
     }

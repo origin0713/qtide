@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ProFileParser } from './ProFileParser';
+import { CmakeFileParser } from './CmakeFileParser';
 import { QtProjectData, QtTreeItem, TreeItemType } from './QtTypeDefine';
 import { QtideConfigManager } from './QtideConfig';
 
@@ -49,7 +50,7 @@ class OperationDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> 
             title: 'Import Project'
         };
         importItem.iconPath = new vscode.ThemeIcon('cloud-download');
-        importItem.tooltip = 'Import a Qt project from a .pro file';
+        importItem.tooltip = 'Import a Qt project (.pro or CMakeLists.txt)';
         items.push(importItem);
 
         const settingsItem = new vscode.TreeItem('Open Qtide Settings', vscode.TreeItemCollapsibleState.None);
@@ -96,19 +97,18 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
     }
 
     addOrUpdateProject(data: QtProjectData): void {
-        const index = this.projects.findIndex(p => p.proFilePath === data.proFilePath);
+        const index = this.projects.findIndex(p => p.projectFilePath === data.projectFilePath);
         if (index >= 0) {
             this.projects[index] = data;
         } else {
             this.projects.push(data);
         }
-        this.dirExpandStates.clear();
         this._onDidChangeTreeData.fire(undefined);
     }
 
-    removeProject(proFilePath: string): void {
+    removeProject(projectFilePath: string): void {
         const before = this.projects.length;
-        this.projects = this.projects.filter(p => p.proFilePath !== proFilePath);
+        this.projects = this.projects.filter(p => p.projectFilePath !== projectFilePath);
         if (this.projects.length !== before) {
             this.dirExpandStates.clear();
             this._onDidChangeTreeData.fire(undefined);
@@ -152,6 +152,9 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
             case TreeItemType.RESOURCES_GROUP:
                 return this.getFileChildren(element.projectData, element.projectData.resources, TreeItemType.RESOURCES_GROUP);
 
+            case TreeItemType.OTHER_FILES_GROUP:
+                return this.getFileChildren(element.projectData, element.projectData.translations || [], TreeItemType.OTHER_FILES_GROUP);
+
             case TreeItemType.DIR_GROUP:
                 return this.getDirGroupChildren(element);
 
@@ -164,7 +167,7 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
         const children: QtTreeItem[] = [];
 
         children.push(new QtTreeItem(
-            path.basename(data.proFilePath),
+            path.basename(data.projectFilePath),
             TreeItemType.PRO_FILE,
             data,
             vscode.TreeItemCollapsibleState.None
@@ -210,6 +213,17 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
             children.push(resourcesGroup);
         }
 
+        const translationFiles = data.translations || [];
+        if (translationFiles.length > 0) {
+            const otherFilesGroup = new QtTreeItem(
+                'Other files',
+                TreeItemType.OTHER_FILES_GROUP,
+                data,
+                vscode.TreeItemCollapsibleState.Expanded
+            );
+            children.push(otherFilesGroup);
+        }
+
         return children;
     }
 
@@ -219,11 +233,11 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
         groupType: TreeItemType
     ): QtTreeItem[] {
         const fileType = this.getFileTypeForGroup(groupType);
-        const proFileDir = projectData.proFileDir;
+        const projectFileDir = projectData.projectFileDir;
 
         const relDirs = files.map(f => {
-            const absDir = path.resolve(proFileDir, path.dirname(f));
-            return path.relative(proFileDir, absDir).replace(/\\/g, '/');
+            const absDir = path.resolve(projectFileDir, path.dirname(f));
+            return path.relative(projectFileDir, absDir).replace(/\\/g, '/');
         });
 
         const dirSet = new Set(relDirs);
@@ -279,13 +293,13 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
 
         for (const dirKey of dirKeys) {
             const fullDir = commonBase ? commonBase + '/' + dirKey : dirKey;
-            const stateKey = `${projectData.proFilePath}:${groupType}:${fullDir}`;
+            const stateKey = `${projectData.projectFilePath}:${groupType}:${fullDir}`;
             const wasExpanded = this.getDirExpandState(stateKey);
             const dirNode = new QtTreeItem(
                 path.basename(dirKey),
                 TreeItemType.DIR_GROUP,
                 projectData,
-                vscode.TreeItemCollapsibleState.Collapsed,
+                wasExpanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed,
                 undefined,
                 groupType,
                 fullDir
@@ -323,8 +337,8 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
 
         return files
             .filter(f => {
-                const absDir = path.resolve(projectData.proFileDir, path.dirname(f));
-                const relDir = path.relative(projectData.proFileDir, absDir).replace(/\\/g, '/');
+                const absDir = path.resolve(projectData.projectFileDir, path.dirname(f));
+                const relDir = path.relative(projectData.projectFileDir, absDir).replace(/\\/g, '/');
                 return relDir === dirPath;
             })
             .map(filePath => new QtTreeItem(
@@ -342,6 +356,7 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
             case TreeItemType.SOURCES_GROUP: return TreeItemType.SOURCE_FILE;
             case TreeItemType.FORMS_GROUP: return TreeItemType.FORM_FILE;
             case TreeItemType.RESOURCES_GROUP: return TreeItemType.RESOURCE_FILE;
+            case TreeItemType.OTHER_FILES_GROUP: return TreeItemType.OTHER_FILE;
             default: return TreeItemType.HEADER_FILE;
         }
     }
@@ -352,6 +367,7 @@ class ProjectDataProvider implements vscode.TreeDataProvider<QtTreeItem> {
             case TreeItemType.SOURCES_GROUP: return projectData.sources;
             case TreeItemType.FORMS_GROUP: return projectData.forms;
             case TreeItemType.RESOURCES_GROUP: return projectData.resources;
+            case TreeItemType.OTHER_FILES_GROUP: return projectData.translations || [];
             default: return [];
         }
     }
@@ -391,7 +407,7 @@ export class QtProjectExplorer {
             this.projectView.onDidExpandElement(e => {
                 const item = e.element as QtTreeItem;
                 if (item.type === TreeItemType.DIR_GROUP) {
-                    const key = `${item.projectData.proFilePath}:${item.parentGroupType}:${item.dirPath}`;
+                    const key = `${item.projectData.projectFilePath}:${item.parentGroupType}:${item.dirPath}`;
                     this.projectProvider.setDirExpandState(key, true);
                 }
                 if (QtTreeItem.iconMap?.[item.type]) {
@@ -405,7 +421,7 @@ export class QtProjectExplorer {
             this.projectView.onDidCollapseElement(e => {
                 const item = e.element as QtTreeItem;
                 if (item.type === TreeItemType.DIR_GROUP) {
-                    const key = `${item.projectData.proFilePath}:${item.parentGroupType}:${item.dirPath}`;
+                    const key = `${item.projectData.projectFilePath}:${item.parentGroupType}:${item.dirPath}`;
                     this.projectProvider.setDirExpandState(key, false);
                 }
                 if (QtTreeItem.iconMap?.[item.type]) {
@@ -435,19 +451,27 @@ export class QtProjectExplorer {
             return;
         }
 
-        const proUris = await vscode.workspace.findFiles(
-            '**/*.pro',
-            '{**/node_modules/**,**/.git/**,**/build/**,**/out/**}'
-        );
+        const [proUris, cmakeUris] = await Promise.all([
+            vscode.workspace.findFiles(
+                '**/*.pro',
+                '{**/node_modules/**,**/.git/**,**/build/**,**/out/**}'
+            ),
+            vscode.workspace.findFiles(
+                '**/CMakeLists.txt',
+                '{**/node_modules/**,**/.git/**,**/build/**,**/out/**}'
+            ),
+        ]);
 
-        if (proUris.length === 0) {
+        const allUris = [...proUris, ...cmakeUris];
+
+        if (allUris.length === 0) {
             return;
         }
 
         const tracked: vscode.Uri[] = [];
         const untracked: vscode.Uri[] = [];
 
-        for (const uri of proUris) {
+        for (const uri of allUris) {
             if (QtideConfigManager.isTracked(uri.fsPath)) {
                 tracked.push(uri);
             } else {
@@ -474,15 +498,18 @@ export class QtProjectExplorer {
         await this.promptProjectSelection(untracked);
     }
 
-    private async promptProjectSelection(proUris: vscode.Uri[]): Promise<void> {
+    private async promptProjectSelection(uris: vscode.Uri[]): Promise<void> {
         const allItem: vscode.QuickPickItem & { isAll?: boolean; uri?: vscode.Uri } = {
             label: 'All Projects',
-            description: `Load all ${proUris.length} projects`,
+            description: `Load all ${uris.length} projects`,
             isAll: true,
         };
 
-        const projItems: (vscode.QuickPickItem & { isAll?: boolean; uri?: vscode.Uri })[] = proUris.map(uri => {
-            const name = path.basename(uri.fsPath, '.pro');
+        const projItems: (vscode.QuickPickItem & { isAll?: boolean; uri?: vscode.Uri })[] = uris.map(uri => {
+            const fileName = path.basename(uri.fsPath);
+            const name = fileName === 'CMakeLists.txt'
+                ? path.basename(path.dirname(uri.fsPath))
+                : path.basename(uri.fsPath, '.pro');
             const dir = path.relative(this.workspaceRoot!, path.dirname(uri.fsPath));
             return {
                 label: name,
@@ -505,9 +532,13 @@ export class QtProjectExplorer {
         }
 
         if (selected.isAll) {
-            for (const uri of proUris) {
+            for (const uri of uris) {
                 await this.loadProject(uri.fsPath, { silent: true });
-                QtideConfigManager.save(uri.fsPath, path.basename(uri.fsPath, '.pro'));
+                const fileName = path.basename(uri.fsPath);
+                const name = fileName === 'CMakeLists.txt'
+                    ? path.basename(path.dirname(uri.fsPath))
+                    : path.basename(uri.fsPath, '.pro');
+                QtideConfigManager.save(uri.fsPath, name);
             }
             return;
         }
@@ -521,11 +552,11 @@ export class QtProjectExplorer {
             return;
         }
 
-        const proFilePath = item.projectData.proFilePath;
-        const projName = item.projectData.name;
+        const projectFilePath = item.projectData.projectFilePath;
+        const projectName = item.projectData.name;
 
         const confirm = await vscode.window.showWarningMessage(
-            `Remove project "${projName}" from Qtide?`,
+            `Remove project "${projectName}" from Qtide?`,
             { modal: true },
             'Remove'
         );
@@ -534,32 +565,68 @@ export class QtProjectExplorer {
             return;
         }
 
-        this.projectProvider.removeProject(proFilePath);
-        this.clearRefreshTimer(proFilePath);
+        this.projectProvider.removeProject(projectFilePath);
+        this.clearRefreshTimer(projectFilePath);
         this.setupWatchers();
 
-        QtideConfigManager.remove(proFilePath);
+        QtideConfigManager.remove(projectFilePath);
 
-        vscode.window.showInformationMessage(`Project "${projName}" removed.`);
+        vscode.window.showInformationMessage(`Project "${projectName}" removed.`);
     }
 
     async importProject(): Promise<void> {
+        const typePicks: (vscode.QuickPickItem & { projectType: 'qmake' | 'cmake' })[] = [
+            { label: 'qmake (.pro)', description: 'Import a Qt qmake project from a .pro file', projectType: 'qmake' },
+            { label: 'CMake (CMakeLists.txt)', description: 'Import a CMake project', projectType: 'cmake' },
+        ];
+
+        const selectedType = await vscode.window.showQuickPick(typePicks, {
+            title: 'Qtide - Select Project Type',
+            placeHolder: 'Select the project file type to import...',
+        });
+
+        if (!selectedType) {
+            return;
+        }
+
+        let filters: { [name: string]: string[] };
+        let dialogTitle: string;
+
+        if (selectedType.projectType === 'qmake') {
+            filters = { 'Qt Project Files': ['pro'] };
+            dialogTitle = 'Select Qt .pro file';
+        } else {
+            filters = { 'CMake Project file (CMakeLists.txt)': ['txt'] };
+            dialogTitle = 'Select CMakeLists.txt';
+        }
+
         const uris = await vscode.window.showOpenDialog({
             canSelectFiles: true,
             canSelectFolders: false,
             canSelectMany: false,
-            filters: {
-                'Qt Project Files': ['pro']
-            },
-            title: 'Select Qt .pro file'
+            filters,
+            title: dialogTitle,
         });
 
         if (!uris || uris.length === 0) {
             return;
         }
 
-        await this.loadProject(uris[0].fsPath);
-        QtideConfigManager.save(uris[0].fsPath, path.basename(uris[0].fsPath, '.pro'));
+        const filePath = uris[0].fsPath;
+        const fileName = path.basename(filePath);
+
+        if (selectedType.projectType === 'cmake') {
+            if (fileName !== 'CMakeLists.txt' && fileName !== 'CMakeCache.txt') {
+                vscode.window.showWarningMessage(
+                    `Expected CMakeLists.txt, got "${fileName}". Loading anyway.`
+                );
+            }
+            await this.loadProject(uris[0].fsPath);
+            QtideConfigManager.save(uris[0].fsPath, path.basename(path.dirname(uris[0].fsPath)));
+        } else {
+            await this.loadProject(uris[0].fsPath);
+            QtideConfigManager.save(uris[0].fsPath, path.basename(uris[0].fsPath, '.pro'));
+        }
     }
 
     async openProject(): Promise<void> {
@@ -673,14 +740,17 @@ export class QtProjectExplorer {
     }
 
     async loadProject(
-        proFilePath: string,
+        filePath: string,
         options?: { silent?: boolean }
     ): Promise<void> {
-        const data = ProFileParser.parse(proFilePath);
+        const ext = path.extname(filePath).toLowerCase();
+        const data = ext === '.pro'
+            ? ProFileParser.parse(filePath)
+            : CmakeFileParser.parse(filePath);
 
         if (!data) {
             if (!options?.silent) {
-                vscode.window.showErrorMessage(`Failed to parse .pro file: ${proFilePath}`);
+                vscode.window.showErrorMessage(`Failed to parse project file: ${path.basename(filePath)}`);
             }
             return;
         }
@@ -699,18 +769,19 @@ export class QtProjectExplorer {
     }
 
     private async promptSaveWorkspace(data: QtProjectData): Promise<void> {
+        const projectTypeLabel = data.projectType === 'cmake' ? 'CMake' : 'qmake';
         const selection = await vscode.window.showInformationMessage(
-            `Project "${data.name}" imported. Continue to auto-save workspace, Cancel to choose custom path.`,
+            `[${projectTypeLabel}] Project "${data.name}" imported. Continue to auto-save workspace, Cancel to choose custom path.`,
             'Continue', 'Cancel'
         );
 
         let targetPath: string | undefined;
 
         if (selection === 'Continue') {
-            targetPath = path.join(data.proFileDir, `${data.name}.code-workspace`);
+            targetPath = path.join(data.projectFileDir, `${data.name}.code-workspace`);
         } else if (selection === 'Cancel') {
             const defaultUri = vscode.Uri.file(
-                path.join(data.proFileDir, `${data.name}.code-workspace`)
+                path.join(data.projectFileDir, `${data.name}.code-workspace`)
             );
             const uri = await vscode.window.showSaveDialog({
                 defaultUri,
@@ -757,7 +828,7 @@ export class QtProjectExplorer {
         }
 
         for (const proj of projects) {
-            await this.loadProject(proj.proFilePath, { silent: true });
+            await this.loadProject(proj.projectFilePath, { silent: true });
         }
 
         vscode.window.showInformationMessage(
@@ -812,59 +883,59 @@ export class QtProjectExplorer {
         this.disposeWatchers();
 
         for (const proj of this.projectProvider.getProjects()) {
-            const proWatcher = vscode.workspace.createFileSystemWatcher(proj.proFilePath);
-            proWatcher.onDidChange(() => this.scheduleProjectRefresh(proj.proFilePath));
-            proWatcher.onDidCreate(() => this.scheduleProjectRefresh(proj.proFilePath));
-            proWatcher.onDidDelete(() => this.onProFileDeleted(proj.proFilePath));
-            this.fileWatchers.push(proWatcher);
+            const projectWatcher = vscode.workspace.createFileSystemWatcher(proj.projectFilePath);
+            projectWatcher.onDidChange(() => this.scheduleProjectRefresh(proj.projectFilePath));
+            projectWatcher.onDidCreate(() => this.scheduleProjectRefresh(proj.projectFilePath));
+            projectWatcher.onDidDelete(() => this.onProjectFileDeleted(proj.projectFilePath));
+            this.fileWatchers.push(projectWatcher);
 
             const dirPattern = new vscode.RelativePattern(
-                vscode.Uri.file(proj.proFileDir),
+                vscode.Uri.file(proj.projectFileDir),
                 '**/*'
             );
             const dirWatcher = vscode.workspace.createFileSystemWatcher(dirPattern);
-            dirWatcher.onDidChange(uri => this.onProjectDirChanged(proj.proFilePath, uri));
-            dirWatcher.onDidCreate(uri => this.onProjectDirChanged(proj.proFilePath, uri));
-            dirWatcher.onDidDelete(uri => this.onProjectDirChanged(proj.proFilePath, uri));
+            dirWatcher.onDidChange(uri => this.onProjectDirChanged(proj.projectFilePath, uri));
+            dirWatcher.onDidCreate(uri => this.onProjectDirChanged(proj.projectFilePath, uri));
+            dirWatcher.onDidDelete(uri => this.onProjectDirChanged(proj.projectFilePath, uri));
             this.fileWatchers.push(dirWatcher);
         }
     }
 
-    private onProFileDeleted(proFilePath: string): void {
-        this.projectProvider.removeProject(proFilePath);
-        this.clearRefreshTimer(proFilePath);
+    private onProjectFileDeleted(filePath: string): void {
+        this.projectProvider.removeProject(filePath);
+        this.clearRefreshTimer(filePath);
         this.setupWatchers();
-        QtideConfigManager.remove(proFilePath);
-        vscode.window.showWarningMessage(`Removed project: ${path.basename(proFilePath)}`);
+        QtideConfigManager.remove(filePath);
+        vscode.window.showWarningMessage(`Removed project: ${path.basename(filePath)}`);
     }
 
-    private onProjectDirChanged(proFilePath: string, uri: vscode.Uri): void {
+    private onProjectDirChanged(filePath: string, uri: vscode.Uri): void {
         const basename = path.basename(uri.fsPath).toLowerCase();
-        if (basename.endsWith('.pro')) {
+        if (basename.endsWith('.pro') || basename === 'cmakelists.txt') {
             return;
         }
-        this.scheduleProjectRefresh(proFilePath);
+        this.scheduleProjectRefresh(filePath);
     }
 
-    private scheduleProjectRefresh(proFilePath: string): void {
-        const existing = this.refreshTimers.get(proFilePath);
+    private scheduleProjectRefresh(projectFilePath: string): void {
+        const existing = this.refreshTimers.get(projectFilePath);
         if (existing) {
             clearTimeout(existing);
         }
 
         const timer = setTimeout(() => {
-            this.refreshTimers.delete(proFilePath);
-            void this.loadProject(proFilePath, { silent: true });
+            this.refreshTimers.delete(projectFilePath);
+            void this.loadProject(projectFilePath, { silent: true });
         }, 300);
 
-        this.refreshTimers.set(proFilePath, timer);
+        this.refreshTimers.set(projectFilePath, timer);
     }
 
-    private clearRefreshTimer(proFilePath: string): void {
-        const timer = this.refreshTimers.get(proFilePath);
+    private clearRefreshTimer(projectFilePath: string): void {
+        const timer = this.refreshTimers.get(projectFilePath);
         if (timer) {
             clearTimeout(timer);
-            this.refreshTimers.delete(proFilePath);
+            this.refreshTimers.delete(projectFilePath);
         }
     }
 

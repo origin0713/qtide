@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { QtProjectData } from './QtTypeDefine';
+import { ProjectType, QtProjectData } from './QtTypeDefine';
 
 export class ProFileParser {
 
@@ -25,12 +25,14 @@ export class ProFileParser {
 
         return {
             name: target,
-            proFilePath: proFilePath,
-            proFileDir: proFileDir,
+            projectType: ProjectType.QMAKE,
+            projectFilePath: proFilePath,
+            projectFileDir: proFileDir,
             headers: vars['HEADERS'] || [],
             sources: vars['SOURCES'] || [],
             forms: vars['FORMS'] || [],
             resources: vars['RESOURCES'] || [],
+            translations: vars['TRANSLATIONS'] || [],
         };
     }
 
@@ -100,7 +102,7 @@ export class ProFileParser {
 
         const resolved = ProFileParser.resolveReferences(rawVars, proFileDir);
 
-        const fileKeys = ['HEADERS', 'SOURCES', 'FORMS', 'RESOURCES'];
+        const fileKeys = ['HEADERS', 'SOURCES', 'FORMS', 'RESOURCES', 'TRANSLATIONS'];
         const result: Record<string, string[]> = {};
         for (const key of fileKeys) {
             result[key] = [];
