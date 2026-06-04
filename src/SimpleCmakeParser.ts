@@ -106,10 +106,9 @@ export class SimpleCmakeParser {
         const cleanContent = removeComments(content);
         const commands = parseCommands(cleanContent);
 
-        const name = SimpleCmakeParser.extractProjectName(commands);
+        const vars = SimpleCmakeParser.buildVariableMap(commands, cmakeFileDir);
+        const name = SimpleCmakeParser.extractProjectName(commands, vars);
         const projName = name || path.basename(cmakeFileDir);
-
-        const vars = SimpleCmakeParser.buildVariableMap(commands);
         const allFiles = SimpleCmakeParser.extractFiles(commands, vars);
 
         const { headers, sources, forms, resources, translations } = classifyFiles(allFiles);
@@ -127,23 +126,62 @@ export class SimpleCmakeParser {
         };
     }
 
-    private static extractProjectName(commands: { name: string; args: string }[]): string | null {
+    private static extractProjectName(
+        commands: { name: string; args: string }[],
+        vars: Map<string, string[]>
+    ): string | null {
         const projectCmd = commands.find(cmd => cmd.name.toLowerCase() === 'project');
         if (!projectCmd) return null;
 
         const args = splitArgs(projectCmd.args);
-        return args.length > 0 ? stripQuotes(args[0]) : null;
+        if (args.length === 0) return null;
+
+        let name = stripQuotes(args[0]);
+        const varMatch = name.match(/^\$\{(\w+)\}$/);
+        if (varMatch) {
+            const resolved = vars.get(varMatch[1]);
+            if (resolved && resolved.length > 0) return resolved[0];
+        }
+        return name;
     }
 
-    private static buildVariableMap(commands: { name: string; args: string }[]): Map<string, string[]> {
+    private static buildVariableMap(
+        commands: { name: string; args: string }[],
+        cmakeFileDir: string
+    ): Map<string, string[]> {
         const vars = new Map<string, string[]>();
-        for (const cmd of commands) {
-            if (cmd.name.toLowerCase() !== 'set') continue;
-            const args = splitArgs(cmd.args);
-            if (args.length < 2) continue;
+        vars.set('CMAKE_CURRENT_SOURCE_DIR', [cmakeFileDir]);
 
-            const varName = stripQuotes(args[0]);
-            vars.set(varName, args.slice(1).map(v => stripQuotes(v)));
+        for (const cmd of commands) {
+            const lowerName = cmd.name.toLowerCase();
+            if (lowerName === 'set') {
+                const args = splitArgs(cmd.args);
+                if (args.length < 2) continue;
+
+                const varName = stripQuotes(args[0]);
+                vars.set(varName, args.slice(1).map(v => stripQuotes(v)));
+            } else if (lowerName === 'get_filename_component') {
+                const args = splitArgs(cmd.args);
+                if (args.length < 3) continue;
+
+                const varName = stripQuotes(args[0]);
+                let filePath = stripQuotes(args[1]);
+                const mode = stripQuotes(args[2]).toUpperCase();
+
+                filePath = filePath.replace(/\$\{CMAKE_CURRENT_SOURCE_DIR\}/g, cmakeFileDir);
+                filePath = filePath.replace(/\$\{CMAKE_CURRENT_LIST_DIR\}/g, cmakeFileDir);
+
+                let value: string;
+                switch (mode) {
+                    case 'NAME':      value = path.basename(filePath); break;
+                    case 'DIRECTORY':
+                    case 'PATH':      value = path.dirname(filePath); break;
+                    case 'NAME_WE':   value = path.basename(filePath, path.extname(filePath)); break;
+                    case 'EXT':       value = path.extname(filePath); break;
+                    default:          value = filePath; break;
+                }
+                vars.set(varName, [value]);
+            }
         }
         return vars;
     }

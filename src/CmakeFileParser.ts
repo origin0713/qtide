@@ -19,15 +19,19 @@ export class CmakeFileParser {
         const cleanContent = CmakeFileParser.removeComments(content);
         const commands = CmakeFileParser.parseCommands(cleanContent);
 
-        const name = CmakeFileParser.extractProjectName(commands);
-        const projName = name || path.basename(cmakeFileDir);
-
         const vars = CmakeFileParser.initBuiltinVars(cmakeFileDir, cmakeFilePath, commands);
-        const userVars = CmakeFileParser.buildVariableMap(commands);
+        const userVars = CmakeFileParser.buildVariableMap(commands, cmakeFileDir);
         for (const [key, value] of userVars) {
+            if ((key === 'PROJECT_NAME' || key === 'CMAKE_PROJECT_NAME') && vars.has(key)) continue;
             vars.set(key, value);
         }
         const resolvedVars = CmakeFileParser.resolveReferences(vars);
+
+        const resolvedProjName = resolvedVars.get('PROJECT_NAME');
+        const projName = (resolvedProjName && resolvedProjName.length > 0
+            && !resolvedProjName[0].includes('${'))
+            ? resolvedProjName[0]
+            : (CmakeFileParser.extractProjectName(commands) || path.basename(cmakeFileDir));
 
         const { headers, sources, forms, resources, translations } =
             CmakeFileParser.extractFiles(resolvedVars, cmakeFileDir);
@@ -127,8 +131,10 @@ export class CmakeFileParser {
         if (projCmd) {
             const args = CmakeFileParser.splitArgs(projCmd.args);
             const projName = args.length > 0 ? CmakeFileParser.stripQuotes(args[0]) : '';
-            vars.set('PROJECT_NAME', [projName]);
-            vars.set('CMAKE_PROJECT_NAME', [projName]);
+            if (!projName.includes('${')) {
+                vars.set('PROJECT_NAME', [projName]);
+                vars.set('CMAKE_PROJECT_NAME', [projName]);
+            }
             vars.set('PROJECT_SOURCE_DIR', [cmakeFileDir]);
             vars.set('PROJECT_BINARY_DIR', [cmakeFileDir]);
         }
@@ -136,15 +142,42 @@ export class CmakeFileParser {
         return vars;
     }
 
-    private static buildVariableMap(commands: { name: string; args: string }[]): Map<string, string[]> {
+    private static buildVariableMap(
+        commands: { name: string; args: string }[],
+        cmakeFileDir: string
+    ): Map<string, string[]> {
         const vars = new Map<string, string[]>();
         for (const cmd of commands) {
-            if (cmd.name.toLowerCase() !== 'set') continue;
-            const args = CmakeFileParser.splitArgs(cmd.args);
-            if (args.length < 2) continue;
+            const lowerName = cmd.name.toLowerCase();
+            if (lowerName === 'set') {
+                const args = CmakeFileParser.splitArgs(cmd.args);
+                if (args.length < 2) continue;
 
-            const varName = CmakeFileParser.stripQuotes(args[0]);
-            vars.set(varName, args.slice(1).map(v => CmakeFileParser.stripQuotes(v)));
+                const varName = CmakeFileParser.stripQuotes(args[0]);
+                vars.set(varName, args.slice(1).map(v => CmakeFileParser.stripQuotes(v)));
+            } else if (lowerName === 'get_filename_component') {
+                const args = CmakeFileParser.splitArgs(cmd.args);
+                if (args.length < 3) continue;
+
+                const varName = CmakeFileParser.stripQuotes(args[0]);
+                let filePath = CmakeFileParser.stripQuotes(args[1]);
+                const mode = CmakeFileParser.stripQuotes(args[2]).toUpperCase();
+
+                filePath = filePath
+                    .replace(/\$\{CMAKE_CURRENT_SOURCE_DIR\}/g, cmakeFileDir)
+                    .replace(/\$\{CMAKE_CURRENT_LIST_DIR\}/g, cmakeFileDir);
+
+                let value: string;
+                switch (mode) {
+                    case 'NAME':      value = path.basename(filePath); break;
+                    case 'DIRECTORY':
+                    case 'PATH':      value = path.dirname(filePath); break;
+                    case 'NAME_WE':   value = path.basename(filePath, path.extname(filePath)); break;
+                    case 'EXT':       value = path.extname(filePath); break;
+                    default:          value = filePath; break;
+                }
+                vars.set(varName, [value]);
+            }
         }
         return vars;
     }
