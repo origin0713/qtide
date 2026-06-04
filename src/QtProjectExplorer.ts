@@ -509,8 +509,6 @@ export class QtProjectExplorer {
                 if (item.type === TreeItemType.DIR_GROUP) {
                     const key = `${item.projectData.projectFilePath}:${item.parentGroupType}:${item.dirPath}`;
                     this.projectProvider.setDirExpandState(key, true);
-                }
-                if (QtTreeItem.iconMap?.[item.type]) {
                     item.updateExpandIcon(true);
                     this.projectProvider.refreshItem(item);
                 }
@@ -523,8 +521,6 @@ export class QtProjectExplorer {
                 if (item.type === TreeItemType.DIR_GROUP) {
                     const key = `${item.projectData.projectFilePath}:${item.parentGroupType}:${item.dirPath}`;
                     this.projectProvider.setDirExpandState(key, false);
-                }
-                if (QtTreeItem.iconMap?.[item.type]) {
                     item.updateExpandIcon(false);
                     this.projectProvider.refreshItem(item);
                 }
