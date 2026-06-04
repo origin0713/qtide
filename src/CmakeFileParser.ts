@@ -18,14 +18,19 @@ export class CmakeFileParser {
 
         const cleanContent = CmakeFileParser.removeComments(content);
         const commands = CmakeFileParser.parseCommands(cleanContent);
-        const vars = CmakeFileParser.buildVariableMap(commands);
-        const resolvedVars = CmakeFileParser.resolveReferences(vars);
 
         const name = CmakeFileParser.extractProjectName(commands);
         const projName = name || path.basename(cmakeFileDir);
 
+        const vars = CmakeFileParser.initBuiltinVars(cmakeFileDir, cmakeFilePath, commands);
+        const userVars = CmakeFileParser.buildVariableMap(commands);
+        for (const [key, value] of userVars) {
+            vars.set(key, value);
+        }
+        const resolvedVars = CmakeFileParser.resolveReferences(vars);
+
         const { headers, sources, forms, resources, translations } =
-            CmakeFileParser.extractFiles(resolvedVars);
+            CmakeFileParser.extractFiles(resolvedVars, cmakeFileDir);
 
         return {
             name: projName,
@@ -104,6 +109,33 @@ export class CmakeFileParser {
         return args.length > 0 ? CmakeFileParser.stripQuotes(args[0]) : null;
     }
 
+    private static initBuiltinVars(
+        cmakeFileDir: string,
+        cmakeFilePath: string,
+        commands: { name: string; args: string }[]
+    ): Map<string, string[]> {
+        const vars = new Map<string, string[]>();
+        vars.set('CMAKE_CURRENT_SOURCE_DIR', [cmakeFileDir]);
+        vars.set('CMAKE_CURRENT_BINARY_DIR', [cmakeFileDir]);
+        vars.set('CMAKE_CURRENT_LIST_DIR', [cmakeFileDir]);
+        vars.set('CMAKE_CURRENT_LIST_FILE', [cmakeFilePath]);
+        vars.set('CMAKE_CURRENT_LIST_LINE', ['0']);
+        vars.set('CMAKE_SOURCE_DIR', [cmakeFileDir]);
+        vars.set('CMAKE_BINARY_DIR', [cmakeFileDir]);
+
+        const projCmd = commands.find(c => c.name.toLowerCase() === 'project');
+        if (projCmd) {
+            const args = CmakeFileParser.splitArgs(projCmd.args);
+            const projName = args.length > 0 ? CmakeFileParser.stripQuotes(args[0]) : '';
+            vars.set('PROJECT_NAME', [projName]);
+            vars.set('CMAKE_PROJECT_NAME', [projName]);
+            vars.set('PROJECT_SOURCE_DIR', [cmakeFileDir]);
+            vars.set('PROJECT_BINARY_DIR', [cmakeFileDir]);
+        }
+
+        return vars;
+    }
+
     private static buildVariableMap(commands: { name: string; args: string }[]): Map<string, string[]> {
         const vars = new Map<string, string[]>();
         for (const cmd of commands) {
@@ -126,6 +158,13 @@ export class CmakeFileParser {
             }
             resolved.set(key, expanded);
         }
+        for (const [key, values] of resolved) {
+            const expanded: string[] = [];
+            for (const v of values) {
+                expanded.push(...CmakeFileParser.expandVar(v, resolved));
+            }
+            resolved.set(key, expanded);
+        }
         return resolved;
     }
 
@@ -143,11 +182,22 @@ export class CmakeFileParser {
         return [expanded];
     }
 
-    private static extractFiles(vars: Map<string, string[]>): {
+    private static normalizePath(filePath: string, cmakeFileDir: string): string {
+        let cleaned = filePath.replace(/\$\{[^}]+\}[\/\\]?/g, '');
+        if (cleaned && cleaned !== filePath) {
+            return cleaned.replace(/\\/g, '/');
+        }
+        if (path.isAbsolute(filePath)) {
+            return path.relative(cmakeFileDir, filePath).replace(/\\/g, '/');
+        }
+        return filePath.replace(/\\/g, '/');
+    }
+
+    private static extractFiles(vars: Map<string, string[]>, cmakeFileDir: string): {
         headers: string[]; sources: string[]; forms: string[];
         resources: string[]; translations: string[];
     } {
-        const knownFileVars = ['PROJECT_SOURCES', 'SOURCES', 'HEADERS', 'FORMS', 'RESOURCES', 'TRANSLATIONS', 'TS_FILES'];
+        const knownFileVars = ['PROJECT_SOURCES', 'SOURCES', 'PROJECT_HEADERS', 'HEADERS', 'PROJECT_FORMS', 'FORMS', 'PROJECT_RESOURCES', 'RESOURCES', 'TRANSLATIONS', 'TS_FILES'];
         const allFilesMap = new Map<string, string>();
         for (const varName of knownFileVars) {
             const resolvedName = CmakeFileParser.resolveVarName(varName, vars);
@@ -168,26 +218,28 @@ export class CmakeFileParser {
         const translations: string[] = [];
 
         for (const file of allFilesMap.keys()) {
-            const ext = path.extname(file).toLowerCase();
+            const normalized = CmakeFileParser.normalizePath(file, cmakeFileDir);
+            if (!normalized) continue;
+            const ext = path.extname(normalized).toLowerCase();
             switch (ext) {
                 case '.h': case '.hpp': case '.hxx': case '.hh':
-                    headers.push(file);
+                    headers.push(normalized);
                     break;
                 case '.cpp': case '.c': case '.cc': case '.cxx': case '.c++':
-                    sources.push(file);
+                    sources.push(normalized);
                     break;
                 case '.ui':
-                    forms.push(file);
+                    forms.push(normalized);
                     break;
                 case '.qrc':
-                    resources.push(file);
+                    resources.push(normalized);
                     break;
                 case '.ts': case '.qm':
-                    translations.push(file);
+                    translations.push(normalized);
                     break;
                 default:
                     if (!ext) {
-                        sources.push(file);
+                        sources.push(normalized);
                     }
                     break;
             }
